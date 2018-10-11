@@ -12,7 +12,7 @@ from models import BatchGenerator, ConcatPoolingGRUAdaptive
 
 
 
-PATH = Path('data/')
+PATH = Path('full_data/')
 
 # STEP 1: Define how to process the data
 
@@ -44,7 +44,7 @@ label_field.build_vocab(trainds)
 # STEP 4: Loading the data in batches
 
 traindl, valdl = data.BucketIterator.splits(datasets=(trainds,valds), batch_sizes=(3,3), 
-                                            sort_key=lambda x: len(x.text), device=0,
+                                            sort_key=lambda x: len(x.text), device=-1,
                                            sort_within_batch=True, repeat=False)
 
 batch = next(iter(traindl))
@@ -58,7 +58,7 @@ vocab_size = len(txt_field.vocab)
 embedding_dim = 200
 n_hidden = 64
 n_out = 2
-device = 0 # 0 GPU, -1 CPU
+device = -1 # 0 GPU, -1 CPU
 
 tranidl, valdl = data.BucketIterator.splits(datasets=(trainds,valds), batch_sizes=(512,1024), 
                                            sort_key=lambda x: len(x.text), device=0, 
