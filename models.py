@@ -3,7 +3,7 @@ import numpy as np
 import torch.nn as nn
 import torch.nn.functional as F
 from torch import optim
-from torch.autograd import Variable
+from torch.autograd import Variable # same as Tensor 
 import sys
 
 
@@ -197,7 +197,7 @@ class CNN_Text(nn.Module):
         self.conv15 = nn.Conv2d(Ci, Co, (5, D))
         '''
         self.dropout = nn.Dropout(args.dropout)
-        self.fc1 = nn.Linear(len(Ks)*Co, C)
+        self.fc1 = nn.Linear(len(Ks)*Co, C) # changed from C to Ci, changed back to C
 
     def conv_and_pool(self, x, conv):
         x = F.relu(conv(x)).squeeze(3)  # (N, Co, W)
@@ -225,5 +225,5 @@ class CNN_Text(nn.Module):
         x = torch.cat((x1, x2, x3), 1) # (N,len(Ks)*Co)
         '''
         x = self.dropout(x)  # (N, len(Ks)*Co)
-        logit = self.fc1(x)  # (N, C)
+        logit = self.fc1(x)  # (N, C) changed from C to Ci, changed back to c
         return logit

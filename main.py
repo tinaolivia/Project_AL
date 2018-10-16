@@ -111,32 +111,32 @@ for attr, value in sorted(args.__dict__.items()):
     
 # -------------------------------------------------------------------------------
 # My code - model
-model = models.Model(args) # NB!! MUST POSSIBLY CHANGE SOMETHING IN THE MODEL
+'''model = models.Model(args) # NB!! MUST POSSIBLY CHANGE SOMETHING IN THE MODEL
 if args.snapshot is not None:
     print('\nLoading model from {}...'.format(args.snapshot))
     model.load_state_dict(torch.load(args.snapshot))
 
 if args.cuda:
     torch.cuda.set_device(args.device)
-    model = model.cuda()
+    model = model.cuda()'''
 # -------------------------------------------------------------------------------
 
 
 # CHANGE HERE TO THE CORRECT MODEL
 # model
-'''cnn = model.CNN_Text(args)
+cnn = models.CNN_Text(args)
 if args.snapshot is not None:
     print('\nLoading model from {}...'.format(args.snapshot))
     cnn.load_state_dict(torch.load(args.snapshot))
 
 if args.cuda:
     torch.cuda.set_device(args.device)
-    cnn = cnn.cuda()'''
+    cnn = cnn.cuda()
     
 # -------------------------------------------------------------------------------
 # My code - train and predict
 
-if args.predict is not None:
+'''if args.predict is not None:
     label = train.predict(args.predict, model, text_field, label_field, args.cuda)
     print('\n[Text] {}\n[Label] {}\n'.format(args.predict, label))
 elif args.test:
@@ -150,12 +150,12 @@ else:
         train.train(train_iter, val_iter, model, args)
     except KeyboardInterrupt:
         print('\n' + '-' * 89)
-        print('Exiting from training early')
+        print('Exiting from training early')'''
 # -------------------------------------------------------------------------------
         
 
 # train or predict
-'''if args.predict is not None:
+if args.predict is not None:
     label = train.predict(args.predict, cnn, text_field, label_field, args.cuda)
     print('\n[Text]  {}\n[Label] {}\n'.format(args.predict, label))
 elif args.test:
@@ -166,7 +166,7 @@ elif args.test:
 else:
     print()
     try:
-        train.train(train_iter, dev_iter, cnn, args)
+        train.train(train_iter, val_iter, cnn, args)
     except KeyboardInterrupt:
         print('\n' + '-' * 89)
-        print('Exiting from training early')'''
+        print('Exiting from training early')
