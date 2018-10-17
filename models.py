@@ -3,7 +3,7 @@ import numpy as np
 import torch.nn as nn
 import torch.nn.functional as F
 from torch import optim
-from torch.autograd import Variable # same as Tensor 
+from torch.autograd import Variable # same as Tensor in new syntax
 import sys
 
 

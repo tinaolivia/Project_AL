@@ -4,7 +4,7 @@
 import os
 import sys
 import torch
-import torch.autograd as autograd
+import torch.autograd as autograd 
 import torch.nn.functional as F
 
 
@@ -30,8 +30,8 @@ def train(train_iter, dev_iter, model, args):
             logit = model(feature)
         
 
-            print('logit vector', logit.size())
-            print('target vector', target.size())
+            #print('logit vector', logit.size())
+            #print('target vector', target.size())
             loss = F.cross_entropy(logit, target)
             loss.backward()
             optimizer.step()
@@ -42,7 +42,7 @@ def train(train_iter, dev_iter, model, args):
                 accuracy = 100.0 * corrects/batch.batch_size
                 sys.stdout.write(
                     '\rBatch[{}] - loss: {:.6f}  acc: {:.4f}%({}/{})'.format(steps, 
-                                                                             loss.data[0], 
+                                                                             loss.item(), 
                                                                              accuracy,
                                                                              corrects,
                                                                              batch.batch_size))
@@ -72,7 +72,7 @@ def eval(data_iter, model, args):
         logit = model(feature)
         loss = F.cross_entropy(logit, target, size_average=False)
 
-        avg_loss += loss.data[0]
+        avg_loss += loss.item()
         corrects += (torch.max(logit, 1)
                      [1].view(target.size()).data == target.data).sum()
 
@@ -86,21 +86,21 @@ def eval(data_iter, model, args):
     return accuracy
 
 
-def predict(text, model, text_field, label_feild, cuda_flag):
+def predict(text, model, text_field, label_field, cuda_flag): # changed label_feild til lable_field
     assert isinstance(text, str)
     model.eval()
     # text = text_field.tokenize(text)
     text = text_field.preprocess(text)
     text = [[text_field.vocab.stoi[x] for x in text]]
     x = text_field.tensor_type(text)
-    x = autograd.Variable(x, volatile=True)
+    x = torch.Tensor(x) # autograd.Variable(x,volatile=True) - new syntax, torch.autograd.Variable has become torch.Tensor
     if cuda_flag:
         x = x.cuda()
     print(x)
     output = model(x)
     _, predicted = torch.max(output, 1)
     #return label_feild.vocab.itos[predicted.data[0][0]+1]
-    return label_feild.vocab.itos[predicted.data[0]+1]
+    return label_field.vocab.itos[predicted.data[0]+1]  # changed label_feild til lable_field
 
 
 def save(model, save_dir, save_prefix, steps):
