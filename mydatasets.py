@@ -71,7 +71,7 @@ class Twitter(MyDataset):
         
         
     @classmethod
-    def splits(cls, text_field, label_field, val_ratio=0.99, shuffle=True, root='.', **kwargs):
+    def splits(cls, text_field, label_field, val_ratio=0.9, shuffle=True, root='.', **kwargs):
         path = cls.get_file(root)
         examples = cls(text_field, label_field, path=path, **kwargs).examples
         if shuffle: random.shuffle(examples)

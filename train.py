@@ -21,7 +21,7 @@ def train(train_iter, dev_iter, model, args):
     for epoch in range(1, args.epochs+1):
         for batch in train_iter:
             feature, target = batch.text, batch.label
-            target = target.view(64)
+            target = target.view(30000)
             feature.data.t_(), target.data.sub_(1)  # batch first, index align
             if args.cuda:
                 feature, target = feature.cuda(), target.cuda()
