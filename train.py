@@ -3,25 +3,28 @@
 
 import os
 import sys
+import tqdm
 import torch
 import torch.autograd as autograd 
 import torch.nn.functional as F
+from models import BatchWrapper
 
 
-def train(train_iter, dev_iter, model, args):
+def train(train_iter,val_iter, model, args):
     if args.cuda: # goes to cuda only if available
         model.cuda()
 
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
+    
+    train_dl = BatchWrapper(train_iter, 'text', 'label')
 
     steps = 0
     best_acc = 0
     last_step = 0
     model.train()
     for epoch in range(1, args.epochs+1):
-        for batch in train_iter:
-            feature, target = batch.text, batch.label
-            target = target.view(30000)
+        for feature, target in tqdm.tqdm(train_dl):
+            target = target.view(args.batch_size)
             feature.data.t_(), target.data.sub_(1)  # batch first, index align
             if args.cuda:
                 feature, target = feature.cuda(), target.cuda()
@@ -47,7 +50,7 @@ def train(train_iter, dev_iter, model, args):
                                                                              corrects,
                                                                              batch.batch_size))
             if steps % args.test_interval == 0:
-                dev_acc = eval(dev_iter, model, args)
+                dev_acc = eval(val_iter, model, args)
                 if dev_acc > best_acc:
                     best_acc = dev_acc
                     last_step = steps
@@ -63,8 +66,8 @@ def train(train_iter, dev_iter, model, args):
 def eval(data_iter, model, args):
     model.eval()
     corrects, avg_loss = 0, 0
-    for batch in data_iter:
-        feature, target = batch.text, batch.label
+    data_dl = BatchWrapper(data_iter, 'text', None)
+    for feature, target in tqdm.tqdm(data_dl):
         feature.data.t_(), target.data.sub_(1)  # batch first, index align
         if args.cuda:
             feature, target = feature.cuda(), target.cuda()
