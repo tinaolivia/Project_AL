@@ -14,6 +14,14 @@ import models # changed from model
 import train
 import mydatasets
 
+from torchtext.data import Field, TabularDataset, Iterator, BucketIterator
+from pathlib import Path
+
+filename = 'output.txt'
+
+with open(filename, 'w') as file:
+    file.write('Beginning of main. \n')
+
 
 parser = argparse.ArgumentParser(description='CNN text classificer')
 # learning
@@ -36,13 +44,16 @@ parser.add_argument('-kernel-num', type=int, default=100, help='number of each k
 parser.add_argument('-kernel-sizes', type=str, default='3,4,5', help='comma-separated kernel size to use for convolution')
 parser.add_argument('-static', action='store_true', default=False, help='fix the embedding')
 # device
-parser.add_argument('-device', type=int, default=-1, help='device to use for iterate data, -1 mean cpu [default: -1]')
+parser.add_argument('-device', type=int, default=torch.device('cpu'), help='device to use for iterate data, -1 mean cpu [default: -1]')
 parser.add_argument('-no-cuda', action='store_true', default=False, help='disable the gpu')
 # option
 parser.add_argument('-snapshot', type=str, default=None, help='filename of model snapshot [default: None]')
 parser.add_argument('-predict', type=str, default=None, help='predict the sentence given')
 parser.add_argument('-test', action='store_true', default=False, help='train or test')
 args = parser.parse_args()
+
+with open(filename, 'a') as file:
+    file.write('Arguments defined. \n')
 
 
 # THESE TWO MUST BE CHANGED FOR MY DATASETS
@@ -73,7 +84,7 @@ def mr(text_field, label_field, **kargs):
 
 # -------------------------------------------------------------------------------
 # My code - loading twitter data function
-
+'''
 def twitter(text_field, label_field, **kargs):
     train_data, val_data = mydatasets.Twitter.splits(text_field, label_field)
     text_field.build_vocab(train_data, val_data)
@@ -85,7 +96,34 @@ def twitter(text_field, label_field, **kargs):
 print("\nLoading data...")
 text_field = data.Field(lower=True)
 label_field = data.Field(sequential=True)
-train_iter, val_iter = twitter(text_field, label_field, device=-1, repeat=False)
+train_iter, val_iter = twitter(text_field, label_field, device=-1, repeat=False)'''
+
+# -------------------------------------------------------------------------------
+# My code - new code for loading twitter data
+def twitter(text_field, label_field, **kargs):
+    tv_datafields = [("text", text_field), ("label", label_field)]
+    trn, val = TabularDataset.splits(path='data', train='train.csv', validation='val.csv', 
+                                     format='csv', fields=tv_datafields)
+    tst_datafields = [("text", text_field)]
+    tst = TabularDataset(path='data/test.csv', format='csv', fields=tst_datafields)
+    text_field.build_vocab(trn)
+    label_field.build_vocab(trn)
+    train_iter, val_iter, test_iter = data.BucketIterator.splits((trn,val,tst), 
+                                                                 batch_sizes=(args.batch_size, 
+                                                                              len(val),
+                                                                              len(tst)),
+                                                                 **kargs)
+    return train_iter, val_iter, test_iter
+
+with open(filename, 'a') as file:
+    file.write('Dataloaders defined. \n')
+    file.write('\nLoading data ... \n')
+
+print('\nLoading data... \n')
+text_field = Field(sequential=True, tokenize=lambda x: x.split(), lower=True)
+label_field = Field(sequential=True)
+train_iter, val_iter, test_iter = twitter(text_field, label_field, device=torch.device('cpu'), repeat=False)
+
 # -------------------------------------------------------------------------------
 
 
@@ -96,7 +134,9 @@ label_field = data.Field(sequential=False)
 train_iter, dev_iter = mr(text_field, label_field, device=-1, repeat=False) # NB!!! 
 # train_iter, dev_iter, test_iter = sst(text_field, label_field, device=-1, repeat=False) # NB!!!'''
 
-
+with open(filename, 'a') as file:
+    file.write('\nUpdating arguments. \n')
+    
 # update args and print
 args.embed_num = len(text_field.vocab)
 args.class_num = len(label_field.vocab) - 1
@@ -104,38 +144,83 @@ args.cuda = (not args.no_cuda) and torch.cuda.is_available(); del args.no_cuda
 args.kernel_sizes = [int(k) for k in args.kernel_sizes.split(',')]
 args.save_dir = os.path.join(args.save_dir, datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S'))
 
+with open(filename, 'a') as file:
+    file.write('Arguments updated. \n')
+    file.write('\nParameters: \n')
+
+
 print("\nParameters:")
 for attr, value in sorted(args.__dict__.items()):
     print("\t{}={}".format(attr.upper(), value))
+    with open(filename, 'a') as file:
+        file.write('\t{}={}'.format(attr.upper(), value))
+        file.write('\n')
     
     
 # -------------------------------------------------------------------------------
 # Models
 #model = models.Model(args) # concrete dropout NB!! MUST POSSIBLY CHANGE SOMETHING IN THE MODEL 
+with open(filename, 'a') as file:
+    file.write('\nDefining model. \n')
 model = models.CNN_Text(args) # CNN
+with open(filename, 'a') as file:
+    file.write('Model defined. \n')
 if args.snapshot is not None:
     print('\nLoading model from {}...'.format(args.snapshot))
+    with open(filename, 'a') as file:
+        file.write('Loading model from {}...\n'.format(args.snapshot))
     model.load_state_dict(torch.load(args.snapshot))
+    
+with open(filename, 'a') as file:
+    file.write('Model defined. \n')
 
 if args.cuda:
-    torch.cuda.set_device(args.device)
+    with open(filename, 'a') as file:
+        file.write('\nSetting device. \n')
+        file.write('Current device: {} \n'.format(torch.cuda.current_device()))
+    torch.cuda.set_device(torch.cuda.current_device())
+    with open(filename, 'a') as file:
+        file.write('Device set. \n')
     model = model.cuda()
+    with open(filename, 'a') as file:
+        file.write('Set to device. \n')
 
 # -------------------------------------------------------------------------------
 
 # train or predict
+with open(filename, 'a') as file:
+    file.write('\nBeginning of raining and predicting... \n')
 if args.predict is not None:
+    with open(filename, 'a') as file:
+        file.write('\nPredicting ... \n')
     label = train.predict(args.predict, model, text_field, label_field, args.cuda) # model must be changed here
     print('\n[Text]  {}\n[Label] {}\n'.format(args.predict, label))
+    with open(filename, 'a') as file:
+        file.write('\n[Text] {}\n[Label] {}\n'.format(args.predict, label))
+        file.write('Done predicting.\n')
 elif args.test:
     try:
+        with open(filename, 'a') as file:
+            file.write('\nTesting ...\n')
         train.eval(test_iter, model, args) # and model must be changed here
+        with open(filename, 'a') as file:
+            file.write('Done testing.\n')
     except Exception as e:
         print("\nSorry. The test dataset doesn't  exist.\n")
+        with open(filename, 'a') as file:
+            file.write('\nSorry. The test dataset does not exist. \n')
 else:
     print()
     try:
+        with open(filename, 'a') as file:
+            file.write('\nTraining ... \n')
         train.train(train_iter, val_iter, model, args) # and here
     except KeyboardInterrupt:
         print('\n' + '-' * 89)
         print('Exiting from training early')
+        with open(filename, 'a') as file:
+            file.write('\n' + '-' * 89)
+            file.write('\nExiting from training early.\n')
+        
+with open(filename, 'a') as file:
+    file.write('Done training and predicting')

@@ -20,6 +20,25 @@ class BatchGenerator:
             y = getattr(batch, self.y_field)
             yield(X, y)
             
+            
+class BatchWrapper:
+    def __init__(self, dl, x_var, y_vars):
+        self.dl, self.x_var, self.y_vars = dl, x_var, y_vars
+        
+    def __iter__(self):
+        for batch in self.dl:
+            x = getattr(batch, self.x_var)
+            
+            if self.y_vars is not None:
+                y = torch.cat([getattr(batch, feat).unsqueeze(1) for feat in self.y_vars], dim=1).float()
+            else:
+                y = torch.zeros((1))
+            
+            yield (x, y)
+            
+    def __len__(self):
+        return len(self.dl)
+            
 
 # GRU (Gated Recurrent Unit) network 
 # tutorial https://medium.com/@sonicboom8/sentiment-analysis-torchtext-55fb57b1fab8

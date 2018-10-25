@@ -1,7 +1,10 @@
 import numpy as np
+import pandas as pd
 import csv
 import spacy
 import re
+
+from sklearn.model_selection import train_test_split
 
 def txt_to_csv(path,label,newpath):
     with open(path) as file:
@@ -16,7 +19,7 @@ def txt_to_csv(path,label,newpath):
             
             
 # modification of the first get_texts from fast ai imdb notebook
-def get_texts1(path,LABELS):
+def get_data_as_shuffled_arrays(path,LABELS):
     texts, labels = [],[]
     for idx,label in enumerate(LABELS):
         for fname in (path/label).glob('*.txt'):
@@ -28,7 +31,10 @@ def get_texts1(path,LABELS):
                     line = line.replace('\n','')
                     texts.append(line)
                     labels.append(idx)
-    return np.array(texts), np.array(labels)
+    texts, labels = np.array(texts), np.array(labels)
+    new_idx = np.random.permutation(len(texts))
+    texts, labels = texts[new_idx], labels[new_idx]
+    return texts, labels
 
 
 # functions fixup, get_texts, get_all copied from fast ai imdb notebook
@@ -66,3 +72,57 @@ def tweet_clean(text):
     text = re.sub(r'[^A-Za-z0-9]+', ' ', text) # remove non alphanumeric characters
     text = re.sub(r'https?:/\/\S+', ' ', text) # remove links
     return text.strip()
+
+
+
+
+def train_val_test_split(X, y, test_size, val_size):
+    '''
+    Input:
+        X: data
+        y: labels
+        test_size: fraction of the entire dataset to be for testing
+        val_size: fraction of the training set to be for validation
+    '''
+    X_trn, X_tst, y_trn, y_tst = train_test_split(X, y, test_size=test_size)
+    X_trn, X_val, y_trn, y_val = train_test_split(X_trn, y_trn, test_size=val_size)
+    
+    return X_trn, X_val, X_tst, y_trn, y_val, y_tst
+
+def array_to_csv(X, y, col_names, path):
+    '''
+    Input:
+        data: data given as an array of 2 arrays
+        col_names: names of the columns in the data
+        path: path to where the csv is being saved
+    '''
+        
+    df = pd.DataFrame({col_names[0]:X, col_names[1]:y}, columns=col_names)
+    df.to_csv(path, header=False, index=False)
+     
+    
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
