@@ -70,9 +70,6 @@ def train_with_al(train_iter, dev_iter, test_iter, model, args):
     
     # training model according to train function
         if args.snapshot == None: train(train_iter, dev_iter, model, args)
-        else: 
-            print('\nLoading model from '.format(args.snapshot))
-            model.load_state_dict(torch.load(args.snapshot))
     
     # compute scores from the pool of "unlabeled" data
     # evaluate test accuracy
@@ -155,7 +152,7 @@ def train_with_al(train_iter, dev_iter, test_iter, model, args):
             votes = torch.zeros((test_size,2))
             npts = test_size
             j = 0
-            for batch in test_iter:
+            for k, batch in enumerate(test_iter):
                 r = min(npts, j+len(batch))
                 preds = torch.zeros((len(batch),args.num_preds))
                 feature, target = batch.text, batch.label
@@ -171,6 +168,7 @@ def train_with_al(train_iter, dev_iter, test_iter, model, args):
                     votes[j:r,1] = (preds == 1).sum(1)
                     
                 j += len(batch)
+                if k % 1000 == 0: print('Batch {}'.format(k))
                     
             Py = votes/args.num_preds
             ventropy = -(Py*torch.log(Py)).sum(1)
@@ -186,6 +184,10 @@ def train_with_al(train_iter, dev_iter, test_iter, model, args):
                     if n >= nsel: break
                 
             print('\nIter {}, selected {} by vote dropout and vote entropy, vote entropy {}\n'.format(al_iter, n, total_ve))
+            save_file(subset,'new_data.txt')
+            print('\nSubset stored in new_data.txt.\n')
+            
+            
                     
               
 
@@ -268,3 +270,15 @@ def save(model, save_dir, save_prefix, steps):
     save_prefix = os.path.join(save_dir, save_prefix)
     save_path = '{}_steps_{}.pt'.format(save_prefix, steps)
     torch.save(model.state_dict(), save_path)
+    
+def save_file(itemlist,filename):
+    with open(filename, 'w') as file:
+        for item in itemlist:
+            file.write('{}\n'.format(item))
+    
+    
+    
+    
+    
+    
+    
