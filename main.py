@@ -37,6 +37,11 @@ parser.add_argument('-no-cuda', action='store_true', default=True, help='disable
 parser.add_argument('-snapshot', type=str, default=None, help='filename of model snapshot [default: None]')
 parser.add_argument('-predict', type=str, default=None, help='predict the sentence given')
 parser.add_argument('-test', action='store_true', default=False, help='train or test')
+# active learning 
+parser.add_argument('-method', type=str, default=None, help='active learning query strategy [default: None], alternatives: entropy')
+parser.add_argument('-rounds', type=int, default=10, help='rounds of active querying [default: 10]')
+parser.add_argument('-inc', type=int, default=10, help='number of instances added to training data at each round')
+parser.add_argument('-num_preds', type=int, default=100, help='number of predictions made when computing dropout uncertainty [default:100]')
 args = parser.parse_args()
 
 if args.test: filename  = 'cnn_test.txt'
@@ -45,43 +50,13 @@ else: filename = 'cnn.txt'
 with open(filename, 'w') as file:
     file.write('Arguments defined. \n')
 
-
-# load SST dataset
-def sst(text_field, label_field,  **kargs):
-    train_data, dev_data, test_data = datasets.SST.splits(text_field, label_field, fine_grained=True)
-    text_field.build_vocab(train_data, dev_data, test_data)
-    label_field.build_vocab(train_data, dev_data, test_data)
-    train_iter, dev_iter, test_iter = data.BucketIterator.splits(
-                                        (train_data, dev_data, test_data), 
-                                        batch_sizes=(args.batch_size, 
-                                                     len(dev_data), 
-                                                     len(test_data)),
-                                        **kargs)
-    return train_iter, dev_iter, test_iter 
-
-
-# load MR dataset
-def mr(text_field, label_field, **kargs):
-    train_data, dev_data = mydatasets.MR.splits(text_field, label_field)
-    text_field.build_vocab(train_data, dev_data)
-    label_field.build_vocab(train_data, dev_data)
-    train_iter, dev_iter = data.Iterator.splits(
-                                (train_data, dev_data), 
-                                batch_sizes=(args.batch_size, len(dev_data)),
-                                **kargs)
-    return train_iter, dev_iter
-
+# load twitter dataset
 def twitter(text_field, label_field, **kargs):
     datafields = [("text", text_field), ("label", label_field)]
     trn, val, tst = data.TabularDataset.splits(path='data', train='train.csv', validation='val.csv',test='test.csv',
                                                format='csv', fields=datafields)
     text_field.build_vocab(trn)
     label_field.build_vocab(trn)
-    #train_iter, val_iter, test_iter = data.BucketIterator.splits(datasets=(trn,val,tst),
-    #                                                             batch_sizes=(args.batch_size, 
-    #                                                                          args.batch_size,
-    #                                                                          args.batch_size),
-    #                                                            **kargs)
     train_iter = data.BucketIterator(trn, batch_size=args.batch_size,**kargs)
     val_iter = data.BucketIterator(val, batch_size=args.batch_size,**kargs)
     test_iter = data.BucketIterator(tst, batch_size=args.batch_size,**kargs)
@@ -95,8 +70,6 @@ with open(filename, 'a') as file:
 print("\nLoading data...")
 text_field = data.Field(lower=True)
 label_field = data.Field(sequential=False)
-# train_iter, dev_iter = mr(text_field, label_field, device=-1, repeat=False)
-#train_iter, dev_iter, test_iter = sst(text_field, label_field, device=-1, repeat=False)
 train_iter, dev_iter, test_iter = twitter(text_field, label_field, device=-1, repeat=False)
 
 with open(filename, 'a') as file:
@@ -146,6 +119,8 @@ if args.cuda:
 with open(filename, 'a') as file:
     file.write('Device passed. \n \nTraining and predicting ... \n')
         
+    
+# start training with something like: if args.al is not None: train.train_with_al etc
 
 # train or predict
 if args.predict is not None:
@@ -159,19 +134,11 @@ if args.predict is not None:
 elif args.test:
     with open(filename,'a') as file:
         file.write('\nTesting ... \n')
-    train.evaluate(test_iter, cnn, args)
-    with open(filename,'a') as file:
-        file.write('Done testing. \n')
-    #try:
-    #    with open(filename, 'a') as file:
-    #        file.write('\nEvaluating ... \n')
-    #    train.evaluate(test_iter, cnn, args) 
-    #    with open(filename, 'a') as file:
-    #        file.write('Done evaluating. \n')
-    #except Exception as e:
-    #    print("\nSorry. The test dataset doesn't  exist.\n")
-    #    with open(filename, 'a') as file:
-    #        file.write('\nSorry. The test datset does not exist. \n')
+        train.evaluate(test_iter, cnn, args)
+        with open(filename,'a') as file:
+            file.write('Done testing. \n')
+elif args.method is not None:
+    train.train_with_al(train_iter,dev_iter,test_iter,cnn,args)
 else:
     print()
     try:
