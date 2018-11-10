@@ -1,11 +1,3 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-"""
-Created on Tue Nov  6 10:03:32 2018
-
-@author: toofteda
-"""
-
 import os
 import sys
 import torch
@@ -65,20 +57,26 @@ def train(train_iter, dev_iter, model, args):
                 
 
 
+#NB! for now this is only for binary classification (neg/pos sentiment analysis)
 def train_with_al(train_iter, dev_iter, test_iter, model, args):
     
-    subset = [] # vet ikke om jeg trenger denne
+    subset = [] 
     test_size = get_iter_size(test_iter,args)
+    print('test: ', test_size)
     train_size = get_iter_size(train_iter,args)
+    print('train: ', train_size)
     
     for al_iter in range(args.rounds):
     
     # training model according to train function
         if args.snapshot == None: train(train_iter, dev_iter, model, args)
+        else: 
+            print('\nLoading model from '.format(args.snapshot))
+            model.load_state_dict(torch.load(args.snapshot))
     
     # compute scores from the pool of "unlabeled" data
     # evaluate test accuracy
-        model.eval()
+        '''model.eval()
         npts = get_iter_size(test_iter,args) 
         j = 0
         for i,batch in enumerate(test_iter):
@@ -95,10 +93,26 @@ def train_with_al(train_iter, dev_iter, test_iter, model, args):
             scores[j:r,:] = F.log_softmax(logit,dim=1).data # må denne initializeres?
             j += len(batch)
             
-        print('Iter {}, train score computed'.format(iter_al))
+        print('Iter {}, train score computed'.format(iter_al))'''
             
-            
-    
+        if args.method == 'entropy':
+            logits = get_output(test_iter, args)
+            Py = logits
+            entropy = -(Py*torch.log(Py)).sum(1)
+            top_e, ind = entropy.sort(0,True)
+            nsel = min(test_size-train_size,args.inc)
+            n = 0
+            total_entropy = 0
+            for i in range(test_size):
+                if not (int(ind[i]) in subset):
+                    subset.add(ind[i])
+                    n += 1
+                    total_entropy += float(top_e[i])
+                    if n >= nsel: break
+                
+            print('\nIter {}, selected {} by entropy uncertainty, entropy {}\n'.format(al_iter, n, total_entropy))
+        
+        '''
         if args.method == 'entropy':
             logpy = util.math.logmeanexp(scores,dim=1,keepdim=True) #function to be defined later 
             entropy = -(logpy*torch.exp(logpy)).sum(1) # computing entropy
@@ -115,11 +129,13 @@ def train_with_al(train_iter, dev_iter, test_iter, model, args):
                     if n >= nsel: break
             
             # finne en måte å legge til de nye eksemplene i train_iter, og fjerne dem fra test_iter
-            print('\nIter {}, selected {} by entropy uncertainty, entropy {}\n'.format(al_iter, n, total_entropy))
+            print('\nIter {}, selected {} by entropy uncertainty, entropy {}\n'.format(al_iter, n, total_entropy))'''
         
-        if args.method == 'curiosity': # expected model change (expecdet gradient length)
-            logpy = util.math.logmeanexp(scores,dim=1,keepdim=True)
-            model_param_mi=(torch.exp(score_train)*(score_train-logpy)).mean(1).sum(1)
+        # usikker på om denne funker som den er
+        if args.method == 'egl': # expected model change (expecdet gradient length)
+            logits = get_output(test_iter, args)
+            logpy = util.math.logmeanexp(logits,dim=1,keepdim=True)
+            model_param_mi=(torch.exp(logits)*(logits-logpy)).mean(1).sum(1)
             top_mi,ind = model_param_mi.sort(0,True)
             nsel = min(test_size-train_size,args.inc) #NB! Må ha større test set enn train set
             n = 0
@@ -130,12 +146,47 @@ def train_with_al(train_iter, dev_iter, test_iter, model, args):
                     n += 1
                     total_gain += float(top_mi[i])
                     if n >= nsel: break
-            print('Iter {}, selected {} using expected gradient length, param information gain {}.'.format(iter_al,n,total_gain))
+            print('Iter {}, selected {} using expected gradient length, param information gain {}.'.format(al_iter,n,total_gain))
             
+            
+        # NB! for now, this is made for positive/negative sentiment ananlysis
         if args.method == 'dropout':
-            
-    
+            model.train()
+            votes = torch.zeros((test_size,2))
+            npts = test_size
+            j = 0
+            for batch in test_iter:
+                r = min(npts, j+len(batch))
+                preds = torch.zeros((len(batch),args.num_preds))
+                feature, target = batch.text, batch.label
+                feature.data.t_(), target.data.sub_(1)
+                if args.cuda:
+                    feature,target = feature.cuda(), target.cuda()
+                for i in range(args.num_preds):
+                    
+                    logit = model(feature)
+                    preds[:,i] = torch.max(logit,1)[1]
+                    
+                    votes[j:r,0] = (preds == 0).sum(1)
+                    votes[j:r,1] = (preds == 1).sum(1)
+                    
+                j += len(batch)
+                    
+            Py = votes/args.num_preds
+            ventropy = -(Py*torch.log(Py)).sum(1)
+            top_ve, ind = ventropy.sort(0,True)
+            nsel = min(test_size-train_size,args.inc)
+            n = 0
+            total_ve = 0
+            for i in range(test_size):
+                if not(int(ind[i]) in subset):
+                    subset.add(ind[i])
+                    n += 1
+                    total_ve += float(top_ve[i])
+                    if n >= nsel: break
                 
+            print('\nIter {}, selected {} by vote dropout and vote entropy, vote entropy {}\n'.format(al_iter, n, total_ve))
+                    
               
 
 def get_iter_size(data_iter,args): # LEGG DENNE FUNKSJONEN I EN ANNEN FIL
@@ -144,10 +195,24 @@ def get_iter_size(data_iter,args): # LEGG DENNE FUNKSJONEN I EN ANNEN FIL
         size += len(batch)
     return size
 
-                
-                
-def entropy():
-    return 0
+def get_output(data_iter, model, args):
+    model.eval()
+    data_size = get_iter_size(data_iter, args)
+    logits = torch.tensor((data_size,2))
+    npts = data_size
+    j = 0
+    for batch in data_iter:
+        r = min(npts, j+len(batch))
+        feature,target = batch.text, batch.label
+        feature.data.t_(), target.data.sub_(1)
+        if args.cuda:
+            feature,target = feature.cuda(), target.cuda()
+        
+        logits[j:r,:] = model(feature)
+            
+        j += len(batch)
+        
+    return logits
 
 
 def evaluate(data_iter, model, args):
@@ -196,33 +261,6 @@ def predict(text, model, text_field, label_feild, cuda_flag):
     #return label_feild.vocab.itos[predicted.data[0]+1]
     return predicted.data[0]
 
-def dropout_prediction(data_iter,model,args):
-    
-    model.train()
-    
-    npts = get_iter_size(data_iter)
-    j = 0
-    for batch in data_iter:
-        r = min(npts, j+len(batch))
-        feature,target = batch.text, batch.label
-        feature.data.t_(), target.data.sub_(1)
-        if args.cuda:
-            feature, target = feature.cuda(), target.cuda()
-            
-        for i in range(args.num_preds):
-            logit = model(feature)
-            _, preds[:,i] = torch.max(logit,1)
-            
-        mean_preds[j:r] = np.abs(preds.mean(1)-0.5)
-        j += len(batch)
-        
-    
-        
-        
-        
-    
-        
-    
 
 def save(model, save_dir, save_prefix, steps):
     if not os.path.isdir(save_dir):

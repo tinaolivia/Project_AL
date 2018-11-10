@@ -8,6 +8,7 @@ import torchtext.datasets as datasets
 import model
 import train
 import mydatasets
+import train_al
 
 
 parser = argparse.ArgumentParser(description='CNN text classificer')
@@ -38,8 +39,8 @@ parser.add_argument('-snapshot', type=str, default=None, help='filename of model
 parser.add_argument('-predict', type=str, default=None, help='predict the sentence given')
 parser.add_argument('-test', action='store_true', default=False, help='train or test')
 # active learning 
-parser.add_argument('-method', type=str, default=None, help='active learning query strategy [default: None], alternatives: entropy')
-parser.add_argument('-rounds', type=int, default=10, help='rounds of active querying [default: 10]')
+parser.add_argument('-method', type=str, default=None, help='active learning query strategy [default: None], alternatives: entropy, egl, dropout')
+parser.add_argument('-rounds', type=int, default=1, help='rounds of active querying [default: 10]')
 parser.add_argument('-inc', type=int, default=10, help='number of instances added to training data at each round')
 parser.add_argument('-num_preds', type=int, default=100, help='number of predictions made when computing dropout uncertainty [default:100]')
 args = parser.parse_args()
@@ -138,7 +139,7 @@ elif args.test:
         with open(filename,'a') as file:
             file.write('Done testing. \n')
 elif args.method is not None:
-    train.train_with_al(train_iter,dev_iter,test_iter,cnn,args)
+    train_al.train_with_al(train_iter,dev_iter,test_iter,cnn,args)
 else:
     print()
     try:
