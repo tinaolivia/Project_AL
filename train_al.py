@@ -60,11 +60,15 @@ def train(train_iter, dev_iter, model, args):
 #NB! for now this is only for binary classification (neg/pos sentiment analysis)
 def train_with_al(train_iter, dev_iter, test_iter, model, args):
     
-    subset = [] 
+
     test_size = get_iter_size(test_iter,args)
     print('test: ', test_size)
     train_size = get_iter_size(train_iter,args)
     print('train: ', train_size)
+    dev_size = get_iter_size(dev_iter,args)
+    print('validation: ', dev_size)
+    
+    subset = set(torch.randperm(train_size)[:50].tolist())
     
     for al_iter in range(args.rounds):
     
@@ -149,10 +153,10 @@ def train_with_al(train_iter, dev_iter, test_iter, model, args):
         # NB! for now, this is made for positive/negative sentiment ananlysis
         if args.method == 'dropout':
             model.train()
-            votes = torch.zeros((test_size,2))
-            npts = test_size
+            votes = torch.zeros((dev_size,2))
+            npts = dev_size
             j = 0
-            for k, batch in enumerate(test_iter):
+            for k, batch in enumerate(dev_iter):
                 r = min(npts, j+len(batch))
                 preds = torch.zeros((len(batch),args.num_preds))
                 feature, target = batch.text, batch.label
@@ -168,12 +172,12 @@ def train_with_al(train_iter, dev_iter, test_iter, model, args):
                     votes[j:r,1] = (preds == 1).sum(1)
                     
                 j += len(batch)
-                if k % 1000 == 0: print('Batch {}'.format(k))
+                if k % 100 == 0: print('Batch {}'.format(k))
                     
             Py = votes/args.num_preds
             ventropy = -(Py*torch.log(Py)).sum(1)
             top_ve, ind = ventropy.sort(0,True)
-            nsel = min(test_size-train_size,args.inc)
+            nsel = (args.inc)
             n = 0
             total_ve = 0
             for i in range(test_size):
@@ -184,8 +188,12 @@ def train_with_al(train_iter, dev_iter, test_iter, model, args):
                     if n >= nsel: break
                 
             print('\nIter {}, selected {} by vote dropout and vote entropy, vote entropy {}\n'.format(al_iter, n, total_ve))
-            save_file(subset,'new_data.txt')
-            print('\nSubset stored in new_data.txt.\n')
+            torch.save(subset,'subset.pt')           
+            print('\nSubset stored in subset.pt.\n')
+            
+        if args.method == 'test':
+            for i, batch in enumerate(test_iter):
+                print(i)
             
             
                     
@@ -271,7 +279,7 @@ def save(model, save_dir, save_prefix, steps):
     save_path = '{}_steps_{}.pt'.format(save_prefix, steps)
     torch.save(model.state_dict(), save_path)
     
-def save_file(itemlist,filename):
+def save_file(itemlist,filename, args):
     with open(filename, 'w') as file:
         for item in itemlist:
             file.write('{}\n'.format(item))
