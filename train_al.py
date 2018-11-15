@@ -3,6 +3,12 @@ import sys
 import torch
 import torch.autograd as autograd
 import torch.nn.functional as F
+import torch.nn as nn
+import torchtext
+import torchtext.data as data
+import methods
+import methods_list
+
 
 
 def train(train_iter, dev_iter, model, args):
@@ -48,182 +54,64 @@ def train(train_iter, dev_iter, model, args):
                     best_acc = dev_acc
                     last_step = steps
                     if args.save_best:
-                        save(model, args.save_dir, 'best', steps)
+                        save(model, args.save_dir, 'best', steps, True, args)
                 else:
                     if steps - last_step >= args.early_stop:
                         print('early stop by {} steps.'.format(args.early_stop))
-            elif steps % args.save_interval == 0:
-                save(model, args.save_dir, 'snapshot', steps)
+            #elif steps % args.save_interval == 0:
+             #   save(model, 'al', 'snapshot', steps)
+             
+    save(model, args.method, 'al', steps, False, args)
                 
 
 
 #NB! for now this is only for binary classification (neg/pos sentiment analysis)
-def train_with_al(train_iter, dev_iter, test_iter, model, args):
+def train_with_al(train_set, val_set, test_set, model, args):
     
-
-    test_size = get_iter_size(test_iter,args)
-    print('test: ', test_size)
-    train_size = get_iter_size(train_iter,args)
-    print('train: ', train_size)
-    dev_size = get_iter_size(dev_iter,args)
-    print('validation: ', dev_size)
-    
-    subset = set(torch.randperm(train_size)[:50].tolist())
+    #softmax = nn.Softmax(dim=1)
+    log_softmax = nn.LogSoftmax(dim=1)
+    val_iter = data.BucketIterator(val_set, batch_size=args.batch_size, device=-1, repeat=False)
     
     for al_iter in range(args.rounds):
+        
+        subset = []
+        
+        print('\nTrain: {}, Validation: {}, Test: {} \n'.format(len(train_set),len(val_set), len(test_set)))
     
-    # training model according to train function
-        if args.snapshot == None: train(train_iter, dev_iter, model, args)
     
-    # compute scores from the pool of "unlabeled" data
-    # evaluate test accuracy
-        '''model.eval()
-        npts = get_iter_size(test_iter,args) 
-        j = 0
-        for i,batch in enumerate(test_iter):
-            r = min(npts,j+args.batch_size)
-            feature, target = batch.text, batch.label
-            feature.data.t_(), target.data.sub_(1)
-            if args.cuda:
-                feature, target = feature.cuda(), target.cuda()
-                
-            logit = model(feature)
-            
-           #_, preds = tensor.max(logit,1)
-            
-            scores[j:r,:] = F.log_softmax(logit,dim=1).data # må denne initializeres?
-            j += len(batch)
-            
-        print('Iter {}, train score computed'.format(iter_al))'''
+        if args.method == 'random':
+            subset,n = methods_list.random(test_set, subset, args)
+            print('\nIter {}, selected {} samples at random\n'.format(al_iter, n))
+            print('subset after: ', subset)
             
         if args.method == 'entropy':
-            logits = get_output(test_iter, args)
-            Py = logits
-            entropy = -(Py*torch.log(Py)).sum(1)
-            top_e, ind = entropy.sort(0,True)
-            nsel = min(test_size-train_size,args.inc)
-            n = 0
-            total_entropy = 0
-            for i in range(test_size):
-                if not (int(ind[i]) in subset):
-                    subset.add(ind[i])
-                    n += 1
-                    total_entropy += float(top_e[i])
-                    if n >= nsel: break
-                
+            subset, n, total_entropy = methods_list.entropy(test_set, model, subset, log_softmax, args)                
             print('\nIter {}, selected {} by entropy uncertainty, entropy {}\n'.format(al_iter, n, total_entropy))
+            print('subset after: ', subset)
         
-        '''
-        if args.method == 'entropy':
-            logpy = util.math.logmeanexp(scores,dim=1,keepdim=True) #function to be defined later 
-            entropy = -(logpy*torch.exp(logpy)).sum(1) # computing entropy
-            top_e, ind = entropy.sort(0,True) # sorting entriopies and indices
-            nsel = min(test_size-train_size,args.inc) # NB! Må ha større test sett enn train sett
-            n = 0
-            total_entropy = 0
-            test_size = get_iter_size(test_iter,args)
-            for i in range(test_size):
-                if not (int(ind[i]) in subset):
-                    subset.add(ind[i])
-                    n += 1
-                    total_entropy += float(top_e[i])
-                    if n >= nsel: break
-            
-            # finne en måte å legge til de nye eksemplene i train_iter, og fjerne dem fra test_iter
-            print('\nIter {}, selected {} by entropy uncertainty, entropy {}\n'.format(al_iter, n, total_entropy))'''
-        
-        # usikker på om denne funker som den er
-        if args.method == 'egl': # expected model change (expecdet gradient length)
-            logits = get_output(test_iter, args)
-            logpy = util.math.logmeanexp(logits,dim=1,keepdim=True)
-            model_param_mi=(torch.exp(logits)*(logits-logpy)).mean(1).sum(1)
-            top_mi,ind = model_param_mi.sort(0,True)
-            nsel = min(test_size-train_size,args.inc) #NB! Må ha større test set enn train set
-            n = 0
-            total_gain = 0
-            for i in range(test_size):
-                if not (int(ind[i]) in subset):
-                    subset.add(ind[i])
-                    n += 1
-                    total_gain += float(top_mi[i])
-                    if n >= nsel: break
-            print('Iter {}, selected {} using expected gradient length, param information gain {}.'.format(al_iter,n,total_gain))
-            
-            
-        # NB! for now, this is made for positive/negative sentiment ananlysis
         if args.method == 'dropout':
-            model.train()
-            votes = torch.zeros((dev_size,2))
-            npts = dev_size
-            j = 0
-            for k, batch in enumerate(dev_iter):
-                r = min(npts, j+len(batch))
-                preds = torch.zeros((len(batch),args.num_preds))
-                feature, target = batch.text, batch.label
-                feature.data.t_(), target.data.sub_(1)
-                if args.cuda:
-                    feature,target = feature.cuda(), target.cuda()
-                for i in range(args.num_preds):
+            subset, n = methods_list.dropout(test_set, model, subset, log_softmax, args)
+            print('\nIter {}, selected {} samples with dropout\n'.format(al_iter, n))
+            print('subset after: ', subset)
                     
-                    logit = model(feature)
-                    preds[:,i] = torch.max(logit,1)[1]
-                    
-                    votes[j:r,0] = (preds == 0).sum(1)
-                    votes[j:r,1] = (preds == 1).sum(1)
-                    
-                j += len(batch)
-                if k % 100 == 0: print('Batch {}'.format(k))
-                    
-            Py = votes/args.num_preds
-            ventropy = -(Py*torch.log(Py)).sum(1)
-            top_ve, ind = ventropy.sort(0,True)
-            nsel = (args.inc)
-            n = 0
-            total_ve = 0
-            for i in range(test_size):
-                if not(int(ind[i]) in subset):
-                    subset.add(ind[i])
-                    n += 1
-                    total_ve += float(top_ve[i])
-                    if n >= nsel: break
-                
-            print('\nIter {}, selected {} by vote dropout and vote entropy, vote entropy {}\n'.format(al_iter, n, total_ve))
-            torch.save(subset,'subset.pt')           
-            print('\nSubset stored in subset.pt.\n')
+        # NB! for now, this is made for positive/negative sentiment ananlysis
+        if args.method == 'vote dropout':
+            subset, n = methods_list.vote_dropout(test_set, model, subset, args)
+            print('\nIter {}, selected {} by dropout and vote entropy\n'.format(al_iter, n))
+            #print('subset after: ', subset)
             
-        if args.method == 'test':
-            for i, batch in enumerate(test_iter):
-                print(i)
-            
-            
-                    
-              
-
-def get_iter_size(data_iter,args): # LEGG DENNE FUNKSJONEN I EN ANNEN FIL
-    size = 0
-    for batch in data_iter:
-        size += len(batch)
-    return size
-
-def get_output(data_iter, model, args):
-    model.eval()
-    data_size = get_iter_size(data_iter, args)
-    logits = torch.tensor((data_size,2))
-    npts = data_size
-    j = 0
-    for batch in data_iter:
-        r = min(npts, j+len(batch))
-        feature,target = batch.text, batch.label
-        feature.data.t_(), target.data.sub_(1)
-        if args.cuda:
-            feature,target = feature.cuda(), target.cuda()
+        train_set, test_set = methods_list.update_datasets(train_set, test_set, subset, args) 
         
-        logits[j:r,:] = model(feature)
-            
-        j += len(batch)
+        print('\nTrain: {}, Validation: {}, Test: {} \n'.format(len(train_set),len(val_set), len(test_set)))
         
-    return logits
-
+        train_iter = data.BucketIterator(train_set, batch_size=args.batch_size, device=-1, repeat=False)
+        #test_iter = data.BucketIterator(test_set, batch_size=args.batch_size, device=-1, repeat=False)
+        
+        train(train_iter, val_iter, model, args)
+        
+        #model.load_state_dict(torch.load('snapshot/'))
+        
+        
 
 def evaluate(data_iter, model, args):
     model.eval()
@@ -266,18 +154,25 @@ def predict(text, model, text_field, label_feild, cuda_flag):
         x = x.cuda()
     print(x)
     output = model(x)
+    print(output)
     _, predicted = torch.max(output, 1)
     #return label_feild.vocab.itos[predicted.data[0][0]+1]
     #return label_feild.vocab.itos[predicted.data[0]+1]
     return predicted.data[0]
 
 
-def save(model, save_dir, save_prefix, steps):
-    if not os.path.isdir(save_dir):
-        os.makedirs(save_dir)
-    save_prefix = os.path.join(save_dir, save_prefix)
-    save_path = '{}_steps_{}.pt'.format(save_prefix, steps)
-    torch.save(model.state_dict(), save_path)
+def save(model, save_dir, save_prefix, steps, evaluate, args):
+    if evaluate == False: 
+        if not os.path.isdir(save_dir):
+            os.makedirs(save_dir)
+        save_prefix = os.path.join(save_dir, save_prefix)
+        save_path = '{}_{}.pt'.format(save_prefix, args.method)
+    else: 
+        if not os.path.isdir(save_dir):
+            os.makedirs(save_dir)
+        save_prefix = os.path.join(save_dir, save_prefix)
+        save_path = '{}_steps_{}.pt'.format(save_prefix, steps)
+        torch.save(model.state_dict(), save_path)
     
 def save_file(itemlist,filename, args):
     with open(filename, 'w') as file:

@@ -39,7 +39,8 @@ parser.add_argument('-snapshot', type=str, default=None, help='filename of model
 parser.add_argument('-predict', type=str, default=None, help='predict the sentence given')
 parser.add_argument('-test', action='store_true', default=False, help='train or test')
 # active learning 
-parser.add_argument('-method', type=str, default=None, help='active learning query strategy [default: None], alternatives: entropy, egl, dropout')
+parser.add_argument('-method', type=str, default=None,
+                    help='active learning query strategy [default: None], alternatives: random,entropy, egl, dropout,vote dropout,concrete dropout')
 parser.add_argument('-rounds', type=int, default=1, help='rounds of active querying [default: 10]')
 parser.add_argument('-inc', type=int, default=10, help='number of instances added to training data at each round')
 parser.add_argument('-num_preds', type=int, default=100, help='number of predictions made when computing dropout uncertainty [default:100]')
@@ -52,7 +53,7 @@ with open(filename, 'w') as file:
     file.write('Arguments defined. \n')
 
 # load twitter dataset
-def twitter(text_field, label_field, **kargs):
+def twitter_iterator(text_field, label_field, **kargs):
     datafields = [("text", text_field), ("label", label_field)]
     trn, val, tst = data.TabularDataset.splits(path='data', train='train.csv', validation='val.csv',test='test.csv',
                                                format='csv', fields=datafields)
@@ -61,7 +62,18 @@ def twitter(text_field, label_field, **kargs):
     train_iter = data.BucketIterator(trn, batch_size=args.batch_size,**kargs)
     val_iter = data.BucketIterator(val, batch_size=args.batch_size,**kargs)
     test_iter = data.BucketIterator(tst, batch_size=args.batch_size,**kargs)
-    return train_iter, val_iter, test_iter    
+    return train_iter, val_iter, test_iter
+
+def twitter_dataset(text_field,label_field,**kargs):
+    datafields = [("text",text_field),("label",label_field)]
+    trn, val, tst = data.TabularDataset.splits(path='data',train='train.csv', validation='val.csv', test='test.csv',
+                                               format='csv', fields=datafields)
+    text_field.build_vocab(trn)
+    label_field.build_vocab(trn)
+    
+    #return list(trn), list(val), list(tst) 
+    return trn, val, tst       
+    
 
 with open(filename, 'a') as file:
     file.write('\nDataloaders defined. \nLoading data ... \n')
@@ -71,7 +83,8 @@ with open(filename, 'a') as file:
 print("\nLoading data...")
 text_field = data.Field(lower=True)
 label_field = data.Field(sequential=False)
-train_iter, dev_iter, test_iter = twitter(text_field, label_field, device=-1, repeat=False)
+if args.snapshot is not None: train_set, val_set, test_set = twitter_dataset(text_field, label_field, device=-1, repeat=False)
+else: train_iter, dev_iter, test_iter = twitter_iterator(text_field, label_field, device=-1, repeat=False)
 
 with open(filename, 'a') as file:
     file.write('Data loaded. \n \nUpdating arguments ... \n')
@@ -139,7 +152,7 @@ elif args.test:
         with open(filename,'a') as file:
             file.write('Done testing. \n')
 elif args.method is not None:
-    train_al.train_with_al(train_iter,dev_iter,test_iter,cnn,args)
+    train_al.train_with_al(train_set,val_set,test_set,cnn,args)
 else:
     print()
     try:

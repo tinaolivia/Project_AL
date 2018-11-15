@@ -95,8 +95,9 @@ def predict(text, model, text_field, label_feild, cuda_flag):
         x = autograd.Variable(x)
     if cuda_flag:
         x = x.cuda()
-    print(x)
+    print('x: ',x)
     output = model(x)
+    print('output: ',output)
     _, predicted = torch.max(output, 1)
     #return label_feild.vocab.itos[predicted.data[0][0]+1]
     #return label_feild.vocab.itos[predicted.data[0]+1]
