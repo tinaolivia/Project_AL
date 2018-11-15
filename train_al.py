@@ -11,7 +11,7 @@ import methods_list
 
 
 
-def train(train_iter, dev_iter, model, args):
+def train(train_iter, dev_iter, model, round_, args):
     if args.cuda:
         model.cuda()
 
@@ -53,15 +53,15 @@ def train(train_iter, dev_iter, model, args):
                 if dev_acc > best_acc:
                     best_acc = dev_acc
                     last_step = steps
-                    if args.save_best:
-                        save(model, args.save_dir, 'best', steps, True, args)
+                #    if args.save_best:
+                #        save(model, args.save_dir, 'best', steps, args)
                 else:
                     if steps - last_step >= args.early_stop:
                         print('early stop by {} steps.'.format(args.early_stop))
             #elif steps % args.save_interval == 0:
              #   save(model, 'al', 'snapshot', steps)
              
-    save(model, args.method, 'al', steps, False, args)
+    save(model, args.method, 'al', steps, round_, args, al=True)
                 
 
 
@@ -107,7 +107,7 @@ def train_with_al(train_set, val_set, test_set, model, args):
         train_iter = data.BucketIterator(train_set, batch_size=args.batch_size, device=-1, repeat=False)
         #test_iter = data.BucketIterator(test_set, batch_size=args.batch_size, device=-1, repeat=False)
         
-        train(train_iter, val_iter, model, args)
+        train(train_iter, val_iter, model, al_iter, args)
         
         #model.load_state_dict(torch.load('snapshot/'))
         
@@ -161,12 +161,13 @@ def predict(text, model, text_field, label_feild, cuda_flag):
     return predicted.data[0]
 
 
-def save(model, save_dir, save_prefix, steps, evaluate, args):
-    if evaluate == False: 
+def save(model, save_dir, save_prefix, steps, round_, args, al=False):
+    if al: 
         if not os.path.isdir(save_dir):
             os.makedirs(save_dir)
         save_prefix = os.path.join(save_dir, save_prefix)
-        save_path = '{}_{}.pt'.format(save_prefix, args.method)
+        save_path = '{}_{}_{}.pt'.format(save_prefix, args.method, round_)
+        torch.save(model.state_dict(), save_path)
     else: 
         if not os.path.isdir(save_dir):
             os.makedirs(save_dir)
