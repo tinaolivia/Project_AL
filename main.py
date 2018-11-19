@@ -10,6 +10,7 @@ import train
 import mydatasets
 import train_al
 import test
+import chazutsu
 
 
 parser = argparse.ArgumentParser(description='CNN text classificer')
@@ -25,6 +26,7 @@ parser.add_argument('-early-stop', type=int, default=1000, help='iteration numbe
 parser.add_argument('-save-best', type=bool, default=True, help='whether to save when get best performance')
 # data 
 parser.add_argument('-shuffle', action='store_true', default=False, help='shuffle the data every epoch')
+parser.add_argument('-dataset', type=str, default='twitter', help'dataset [default: twitter], alternative reuters') 
 # model
 parser.add_argument('-dropout', type=float, default=0.5, help='the probability for dropout [default: 0.5]')
 parser.add_argument('-max-norm', type=float, default=3.0, help='l2 constraint of parameters [default: 3.0]')
@@ -46,11 +48,6 @@ parser.add_argument('-rounds', type=int, default=100, help='rounds of active que
 parser.add_argument('-inc', type=int, default=100, help='number of instances added to training data at each round [default: 100]')
 parser.add_argument('-num_preds', type=int, default=100, help='number of predictions made when computing dropout uncertainty [default:100]')
 
-if args.test: filename  = 'cnn_test.txt'
-else: filename = 'cnn.txt'
-
-with open(filename, 'w') as file:
-    file.write('Arguments defined. \n')
 
 # load twitter dataset
 def twitter_iterator(text_field, label_field, **kargs):
@@ -72,21 +69,49 @@ def twitter_dataset(text_field,label_field,**kargs):
     label_field.build_vocab(trn)
     
     #return list(trn), list(val), list(tst) 
-    return trn, val, tst       
-    
+    return trn, val, tst 
 
-with open(filename, 'a') as file:
-    file.write('\nDataloaders defined. \nLoading data ... \n')
+def reuters(text_field, label_field, **kargs):
+    datafields = [("label", label_field), ("parent", label_field), ("text", text_field)]
+    trn, tst = data.TabularDataset.splits(path='data/reutersnews', train='topics_train.txt', test='topics_test.csv',
+                                         format='tsv', fields = datafields)
+               
+    trn = data.Dataset(trn_split, datafields)
+    val = data.Dataset(val, datafields)
+    
+    perm = torch.randperm(len(trn))
+    trn_split, val = [],[]
+    for i,j in enumerate(perm):
+        if i < 2000: val.append(j)
+        else: trn_split.append(j)
+    
+    text_field.build_vocab(trn)
+    label_field.build_vocab(trn)
+    
+    train_iter = data.BucketIterator(trn, batch_size=args.batch_size, **kargs)
+    val_iter = data.BucketIterator(val, batch_size=args.batch_size, **kargs)
+    test_iter = data.BucketIterator(tst, batch_size=args.batch_size, **kargs)
+    
+    return trn, train_iter, val, val_iter, tst, test_iter
 
 
 # load data
-print("\nLoading data...")
-text_field = data.Field(lower=True)
-label_field = data.Field(sequential=False)
-print('\nDatasets ... ')
-train_set, val_set, test_set = twitter_dataset(text_field, label_field, device=-1, repeat=False)
-print('\nData iterators ... \n')
-train_iter, dev_iter, test_iter = twitter_iterator(text_field, label_field, device=-1, repeat=False)
+if args.dataset == 'twitter':
+    print("\nLoading Twitter data...")
+    text_field = data.Field(lower=True)
+    label_field = data.Field(sequential=False)
+    print('\nDatasets ... ')
+    train_set, val_set, test_set = twitter_dataset(text_field, label_field, device=-1, repeat=False)
+    print('\nData iterators ... \n')
+    train_iter, val_iter, test_iter = twitter_iterator(text_field, label_field, device=-1, repeat=False)
+    
+elif args.dataset == 'reuters':
+    print('\nLoading Reuters data ... ')
+    text_field = data.Field(lower=True)
+    label_field = data.Field(sequential=False)
+    print('\nDatasets and iterators ... ')
+    train_set, train_iter, val_set, val_iter, test_set, test_iter = reuters(text_field, label_field, device=-1, repeat=False)
+    
 
 with open(filename, 'a') as file:
     file.write('Data loaded. \n \nUpdating arguments ... \n')
@@ -99,74 +124,33 @@ args.cuda = (not args.no_cuda) and torch.cuda.is_available(); del args.no_cuda
 args.kernel_sizes = [int(k) for k in args.kernel_sizes.split(',')]
 args.save_dir = os.path.join(args.save_dir, datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S'))
 
-with open(filename, 'a') as file:
-    file.write('Arguments updated. \n \n Parameters: \n')
-
 print("\nParameters:")
 for attr, value in sorted(args.__dict__.items()):
     print("\t{}={}".format(attr.upper(), value))
-    with open(filename, 'a') as file:
-        file.write('\t{}={}\n'.format(attr.upper(),value))
 
 
 # model
-with open(filename, 'a') as file:
-    file.write('\nDefining model ... \n') 
 cnn = model.CNN_Text(args)
-with open(filename, 'a') as file:
-    file.write('Model defined. \n \nSnapshot ... \n')
 if args.snapshot is not None:
     print('\nLoading model from {}...'.format(args.snapshot))
-    with open(filename, 'a') as file:
-        file.write('Loading model from {}...\n'.format(args.snapshot))
     cnn.load_state_dict(torch.load(args.snapshot))
-    
-with open(filename, 'a') as file:
-    file.write('Passed snapshot. \n \nDevice ... \n')
 
 if args.cuda:
-    with open(filename, 'a') as file:
-        file.write('Setting device ... \nDevice: {} \n'.format(args.device))
     torch.cuda.set_device(args.device)
     cnn = cnn.cuda()
-    with open(filename, 'a') as file:
-        file.write('Model set to device. \n')
-
-with open(filename, 'a') as file:
-    file.write('Device passed. \n \nTraining and predicting ... \n')
-        
     
-# start training with something like: if args.al is not None: train.train_with_al etc
-
 # train or predict
 if args.predict is not None:
-    with open(filename, 'a') as file:
-        file.write('Predicting ... \n')
     label = train.predict(args.predict, cnn, text_field, label_field, args.cuda)
     print('\n[Text]  {}\n[Label] {}\n'.format(args.predict, label))
-    with open(filename, 'a') as file:
-        file.write('\n[Text]  {}\n[Label] {}\n'.format(args.predict, label))
-        file.write('Done predicting. \n')
 elif args.test:
-    with open(filename,'a') as file:
-        file.write('\nTesting ... \n')
-        train.evaluate(test_iter, cnn, args)
-        with open(filename,'a') as file:
-            file.write('Done testing. \n')
+    train.evaluate(test_iter, cnn, args)
 elif args.method is not None:
     train_al.train_with_al(train_set,val_set,test_set,cnn,args)
 else:
     print()
     try:
-        with open(filename, 'a') as file:
-            file.write('\nTraining ... \n')
-        train.train(train_iter, dev_iter, cnn, args)
-        with open(filename, 'a') as file:
-            file.write('Done training. \n')
+        train.train(train_iter, val_iter, cnn, args)
     except KeyboardInterrupt:
         print('\n' + '-' * 89)
         print('Exiting from training early')
-        with open(filename, 'a') as file:
-            file.write('\n' + '-' * 89)
-            file.write('\nExiting from training early. \n')
-
