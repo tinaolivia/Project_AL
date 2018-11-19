@@ -9,6 +9,7 @@ import model
 import train
 import mydatasets
 import train_al
+import test
 
 
 parser = argparse.ArgumentParser(description='CNN text classificer')
@@ -40,11 +41,10 @@ parser.add_argument('-predict', type=str, default=None, help='predict the senten
 parser.add_argument('-test', action='store_true', default=False, help='train or test')
 # active learning 
 parser.add_argument('-method', type=str, default=None,
-                    help='active learning query strategy [default: None], alternatives: random,entropy, egl, dropout,vote dropout,concrete dropout')
-parser.add_argument('-rounds', type=int, default=1, help='rounds of active querying [default: 10]')
-parser.add_argument('-inc', type=int, default=10, help='number of instances added to training data at each round')
+                    help='active learning query strategy [default: None], alternatives: random, entropy, dropout, vote dropout')
+parser.add_argument('-rounds', type=int, default=100, help='rounds of active querying [default: 100]')
+parser.add_argument('-inc', type=int, default=100, help='number of instances added to training data at each round [default: 100]')
 parser.add_argument('-num_preds', type=int, default=100, help='number of predictions made when computing dropout uncertainty [default:100]')
-args = parser.parse_args()
 
 if args.test: filename  = 'cnn_test.txt'
 else: filename = 'cnn.txt'
@@ -83,8 +83,10 @@ with open(filename, 'a') as file:
 print("\nLoading data...")
 text_field = data.Field(lower=True)
 label_field = data.Field(sequential=False)
-if args.snapshot is not None: train_set, val_set, test_set = twitter_dataset(text_field, label_field, device=-1, repeat=False)
-else: train_iter, dev_iter, test_iter = twitter_iterator(text_field, label_field, device=-1, repeat=False)
+print('\nDatasets ... ')
+train_set, val_set, test_set = twitter_dataset(text_field, label_field, device=-1, repeat=False)
+print('\nData iterators ... \n')
+train_iter, dev_iter, test_iter = twitter_iterator(text_field, label_field, device=-1, repeat=False)
 
 with open(filename, 'a') as file:
     file.write('Data loaded. \n \nUpdating arguments ... \n')
