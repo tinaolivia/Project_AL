@@ -24,10 +24,12 @@ def train(train_iter, dev_iter, model, args):
 
             optimizer.zero_grad()
             logit = model(feature)
+            print(logit)
 
             #print('logit vector', logit.size())
             #print('target vector', target.size())
-            loss = F.cross_entropy(logit, target)
+            if args.dataset == 'reuters': loss = F.binary_cross_entropy(logit, target.float()) 
+            else: loss = F.cross_entropy(logit, target)
             loss.backward()
             optimizer.step()
 
@@ -48,7 +50,7 @@ def train(train_iter, dev_iter, model, args):
                     best_acc = dev_acc
                     last_step = steps
                     if args.save_best:
-                        save(model, args.save_dir, 'best', steps)
+                        save(model, args.save_dir, '{}best'.format(args.dataset), steps)
                 else:
                     if steps - last_step >= args.early_stop:
                         print('early stop by {} steps.'.format(args.early_stop))
