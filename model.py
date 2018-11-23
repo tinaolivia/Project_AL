@@ -56,21 +56,3 @@ class CNN_Text(nn.Module):
         x = self.dropout(x)  # (N, len(Ks)*Co)
         logit = self.fc1(x)  # (N, C)
         return logit
-
-class BatchWrapper:
-    def __init__(self, dl, x_var, y_vars):
-        self.dl, self.x_var, self.y_vars = dl, x_var, y_vars
-        
-    def __iter__(self):
-        for batch in self.dl:
-            x = getattr(batch, self.x_var)
-            
-            if self.y_vars is not None:
-                y = torch.cat([getattr(batch, feat).unsqueeze(1) for feat in self.y_vars], dim=1).float()
-            else:
-                y = torch.zeros((1))
-            
-            yield (x, y)
-            
-    def __len__(self):
-        return len(self.dl)
