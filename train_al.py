@@ -7,7 +7,6 @@ import torch.nn as nn
 import torchtext
 import torchtext.data as data
 import methods
-import methods_list
 import csv
 
 
@@ -34,7 +33,8 @@ def train(train_iter, dev_iter, model, round_, args):
 
             #print('logit vector', logit.size())
             #print('target vector', target.size())
-            loss = F.cross_entropy(logit, target)
+            if args.dataset == 'reuters': loss = F.binary_cross_entropy(logit, target) 
+            else: loss = F.cross_entropy(logit, target)
             loss.backward()
             optimizer.step()
 
@@ -62,7 +62,7 @@ def train(train_iter, dev_iter, model, round_, args):
             #elif steps % args.save_interval == 0:
              #   save(model, 'al', 'snapshot', steps)
              
-    save(model, args.method, 'al', steps, round_, args, al=True)
+    save(model, save_dir=args.method, save_prefix='al', steps=steps, round_=round_, args=args, al=True)
                 
 
 
@@ -73,10 +73,6 @@ def train_with_al(train_set, val_set, test_set, model, args):
     log_softmax = nn.LogSoftmax(dim=1)
     val_iter = data.BucketIterator(val_set, batch_size=args.batch_size, device=-1, repeat=False)
     
-    with open('{}.csv'.format(args.method), mode='w') as csvfile:
-        csvwriter = csv.writer(csvfile, delimiter=',', quotechar='"', quoting=csv.QUOTE_MINIMAL)
-        csvwriter.writerow(['Train size', 'Val accuracy', 'Test accuracy'])
-    
     for al_iter in range(args.rounds):
         
         subset = []
@@ -85,45 +81,41 @@ def train_with_al(train_set, val_set, test_set, model, args):
     
     
         if args.method == 'random':
-            subset,n = methods_list.random(test_set, subset, args)
+            subset,n = methods.random(test_set, subset, args)
             print('\nIter {}, selected {} samples at random\n'.format(al_iter, n))
             #print('subset after: ', subset)
             
         if args.method == 'entropy':
-            subset, n, total_entropy = methods_list.entropy(test_set, model, subset, log_softmax, args)                
+            subset, n, total_entropy = methods.entropy(test_set, model, subset, log_softmax, args)                
             print('\nIter {}, selected {} by entropy uncertainty, entropy {}\n'.format(al_iter, n, total_entropy))
             #print('subset after: ', subset)
         
         if args.method == 'dropout':
-            subset, n = methods_list.dropout(test_set, model, subset, log_softmax, args)
+            subset, n = methods.dropout(test_set, model, subset, log_softmax, args)
             print('\nIter {}, selected {} samples with dropout\n'.format(al_iter, n))
             #print('subset after: ', subset)
                     
         # NB! for now, this is made for positive/negative sentiment ananlysis
         if args.method == 'vote dropout':
-            subset, n = methods_list.vote_dropout(test_set, model, subset, args)
+            subset, n = methods.vote_dropout(test_set, model, subset, args)
             print('\nIter {}, selected {} by dropout and vote entropy\n'.format(al_iter, n))
             #print('subset after: ', subset)
             
-        train_set, test_set = methods_list.update_datasets(train_set, test_set, subset, args) 
+        train_set, test_set = methods.update_datasets(train_set, test_set, subset, args)
+
+        #print(train_set, test_set)
         
         print('\nTrain: {}, Validation: {}, Test: {} \n'.format(len(train_set),len(val_set), len(test_set)))
         
         train_iter = data.BucketIterator(train_set, batch_size=args.batch_size, device=-1, repeat=False)
-        test_iter = data.BucketIterator(test_set, batch_size=args.batch_size, device=-1, repeat=False)
+        #test_iter = data.BucketIterator(test_set, batch_size=args.batch_size, device=-1, repeat=False)
+        
+        model.load_state_dict(torch.load('snapshot/{}_initial_model.pt'.format(args.dataset)))
         
         train(train_iter, val_iter, model, al_iter, args)
         
-        print('Loading model {}, method {}'.format(al_iter, args.method))
-        model.load_state_dict(torch.load('{}/al_{}_{}.pt'.format(args.method, args.method, al_iter)))
-
-        val_acc = evaluate(val_iter, model, args)
-        test_acc = evaluate(test_iter, model, args)
-
-        with open('{}.csv'.format(args.method), mode='a') as csvfile:
-            csvwriter = csv.writer(csvfile, delimiter=',', quotechar='"', quoting=csv.QUOTE_MINIMAL)
-            csvwriter.writerow([len(train_set), val_acc, test_acc])
-
+        print('\nLoading model {}, method {}'.format(al_iter, args.method))
+        model.load_state_dict(torch.load('{}/al_{}_{}.pt'.format(args.method, args.dataset, al_iter)))
 
         
 
@@ -180,7 +172,7 @@ def save(model, save_dir, save_prefix, steps, round_, args, al=False):
         if not os.path.isdir(save_dir):
             os.makedirs(save_dir)
         save_prefix = os.path.join(save_dir, save_prefix)
-        save_path = '{}_{}_{}.pt'.format(save_prefix, args.method, round_)
+        save_path = '{}_{}_{}.pt'.format(save_prefix, args.dataset, round_)
         torch.save(model.state_dict(), save_path)
     else: 
         if not os.path.isdir(save_dir):

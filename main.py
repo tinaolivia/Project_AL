@@ -10,7 +10,10 @@ import train
 import mydatasets
 import train_al
 import test
-import chazutsu
+import csv
+import sys
+
+csv.field_size_limit(sys.maxsize)
 
 
 parser = argparse.ArgumentParser(description='CNN text classificer')
@@ -26,7 +29,7 @@ parser.add_argument('-early-stop', type=int, default=1000, help='iteration numbe
 parser.add_argument('-save-best', type=bool, default=True, help='whether to save when get best performance')
 # data 
 parser.add_argument('-shuffle', action='store_true', default=False, help='shuffle the data every epoch')
-parser.add_argument('-dataset', type=str, default='twitter', help'dataset [default: twitter], alternative reuters') 
+parser.add_argument('-dataset', type=str, default='twitter', choices=['twitter', 'news'], help='dataset [default: twitter]')
 # model
 parser.add_argument('-dropout', type=float, default=0.5, help='the probability for dropout [default: 0.5]')
 parser.add_argument('-max-norm', type=float, default=3.0, help='l2 constraint of parameters [default: 3.0]')
@@ -42,11 +45,12 @@ parser.add_argument('-snapshot', type=str, default=None, help='filename of model
 parser.add_argument('-predict', type=str, default=None, help='predict the sentence given')
 parser.add_argument('-test', action='store_true', default=False, help='train or test')
 # active learning 
-parser.add_argument('-method', type=str, default=None,
-                    help='active learning query strategy [default: None], alternatives: random, entropy, dropout, vote dropout')
+parser.add_argument('-method', type=str, default=None, choices=['random','entropy','vote dropout', 'dropout'],
+                    help='active learning query strategy [default: None]')
 parser.add_argument('-rounds', type=int, default=100, help='rounds of active querying [default: 100]')
 parser.add_argument('-inc', type=int, default=100, help='number of instances added to training data at each round [default: 100]')
 parser.add_argument('-num_preds', type=int, default=100, help='number of predictions made when computing dropout uncertainty [default:100]')
+args = parser.parse_args()
 
 
 # load twitter dataset
@@ -71,26 +75,17 @@ def twitter_dataset(text_field,label_field,**kargs):
     #return list(trn), list(val), list(tst) 
     return trn, val, tst 
 
-def reuters(text_field, label_field, **kargs):
-    datafields = [("label", label_field), ("parent", label_field), ("text", text_field)]
-    trn, tst = data.TabularDataset.splits(path='data/reutersnews', train='topics_train.txt', test='topics_test.csv',
-                                         format='tsv', fields = datafields)
-               
-    trn = data.Dataset(trn_split, datafields)
-    val = data.Dataset(val, datafields)
-    
-    perm = torch.randperm(len(trn))
-    trn_split, val = [],[]
-    for i,j in enumerate(perm):
-        if i < 2000: val.append(j)
-        else: trn_split.append(j)
+def news(text_field, label_field, **kargs):
+    datafields = [("text", text_field),("label", label_field)]
+    trn, val, tst = data.TabularDataset.splits(path='data', train='news_train.tsv', validation='news_val.tsv',
+                                               test='news_test.tsv', format='tsv', fields=datafields)
     
     text_field.build_vocab(trn)
     label_field.build_vocab(trn)
     
-    train_iter = data.BucketIterator(trn, batch_size=args.batch_size, **kargs)
-    val_iter = data.BucketIterator(val, batch_size=args.batch_size, **kargs)
-    test_iter = data.BucketIterator(tst, batch_size=args.batch_size, **kargs)
+    train_iter = data.BucketIterator(trn, args.batch_size, **kargs)
+    val_iter = data.BucketIterator(val, args.batch_size, **kargs)
+    test_iter = data.BucketIterator(tst, args.batch_size, **kargs)
     
     return trn, train_iter, val, val_iter, tst, test_iter
 
@@ -112,9 +107,12 @@ elif args.dataset == 'reuters':
     print('\nDatasets and iterators ... ')
     train_set, train_iter, val_set, val_iter, test_set, test_iter = reuters(text_field, label_field, device=-1, repeat=False)
     
-
-with open(filename, 'a') as file:
-    file.write('Data loaded. \n \nUpdating arguments ... \n')
+elif args.dataset == 'news':
+    print('\nLoading Newsgroup 20 data ... ')
+    text_field = data.Field(lower=True)
+    label_field = data.Field(sequential=False)
+    print('\nDatasets and iterators ... ' )
+    train_set, train_iter, val_set, val_iter, test_set, test_iter = news(text_field, label_field, device=-1, repeat=False)
 
 
 # update args and print
@@ -131,6 +129,7 @@ for attr, value in sorted(args.__dict__.items()):
 
 # model
 cnn = model.CNN_Text(args)
+#train.save(cnn, args.save_dir, 'snapshot', 0)
 if args.snapshot is not None:
     print('\nLoading model from {}...'.format(args.snapshot))
     cnn.load_state_dict(torch.load(args.snapshot))
