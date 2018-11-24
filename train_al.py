@@ -114,7 +114,7 @@ def train_with_al(train_set, val_set, test_set, model, args):
         
         train(train_iter, val_iter, model, al_iter, args)
         
-        print('\nLoading model {}, method {}'.format(al_iter, args.method))
+        print('\n\nLoading model {}, method {}'.format(al_iter, args.method))
         model.load_state_dict(torch.load('{}/al_{}_{}.pt'.format(args.method, args.dataset, al_iter)))
 
         
