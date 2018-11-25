@@ -87,18 +87,18 @@ def train_with_al(train_set, val_set, test_set, model, args):
             
         if args.method == 'entropy':
             subset, n, total_entropy = methods.entropy(test_set, model, subset, log_softmax, args)                
-            print('\nIter {}, selected {} by entropy uncertainty, entropy {}\n'.format(al_iter, n, total_entropy))
+            print('\nIter {}, selected {} by entropy uncertainty, total entropy {}\n'.format(al_iter, n, total_entropy))
             #print('subset after: ', subset)
         
         if args.method == 'dropout':
-            subset, n = methods.dropout(test_set, model, subset, log_softmax, args)
-            print('\nIter {}, selected {} samples with dropout\n'.format(al_iter, n))
+            subset, n, total_var = methods.dropout(test_set, model, subset, log_softmax, args)
+            print('\nIter {}, selected {} samples with dropout, total variability {}\n'.format(al_iter, n, total_var))
             #print('subset after: ', subset)
                     
         # NB! for now, this is made for positive/negative sentiment ananlysis
         if args.method == 'vote dropout':
-            subset, n = methods.vote_dropout(test_set, model, subset, args)
-            print('\nIter {}, selected {} by dropout and vote entropy\n'.format(al_iter, n))
+            subset, n, total_ve = methods.vote_dropout(test_set, model, subset, args)
+            print('\nIter {}, selected {} by dropout and vote entropy, total vote entropy {}\n'.format(al_iter, n, total_ve))
             #print('subset after: ', subset)
             
         train_set, test_set = methods.update_datasets(train_set, test_set, subset, args)

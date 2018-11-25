@@ -7,7 +7,6 @@ import torchtext.data as data
 import torchtext.datasets as datasets
 import model
 import train
-import mydatasets
 import train_al
 import test
 import csv
@@ -50,6 +49,7 @@ parser.add_argument('-method', type=str, default=None, choices=['random','entrop
 parser.add_argument('-rounds', type=int, default=100, help='rounds of active querying [default: 100]')
 parser.add_argument('-inc', type=int, default=100, help='number of instances added to training data at each round [default: 100]')
 parser.add_argument('-num_preds', type=int, default=100, help='number of predictions made when computing dropout uncertainty [default:100]')
+parser.add_argument('-test-method', action='store_true', default=False, help='testing active learning method [default: False]')
 args = parser.parse_args()
 
 
@@ -144,6 +144,8 @@ if args.predict is not None:
     print('\n[Text]  {}\n[Label] {}\n'.format(args.predict, label))
 elif args.test:
     train.evaluate(test_iter, cnn, args)
+elif (args.test_method) and (args.method is not None):
+    test.test(train_set, val_iter, cnn, args)
 elif args.method is not None:
     train_al.train_with_al(train_set,val_set,test_set,cnn,args)
 else:
