@@ -71,7 +71,7 @@ def train_with_al(train_set, val_set, test_set, model, args):
     
     #softmax = nn.Softmax(dim=1)
     log_softmax = nn.LogSoftmax(dim=1)
-    val_iter = data.BucketIterator(val_set, batch_size=args.batch_size, device=-1, repeat=False)
+    val_iter = data.BucketIterator(test_set, batch_size=args.batch_size, device=-1, repeat=False)
     
     for al_iter in range(args.rounds):
         
