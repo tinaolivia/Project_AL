@@ -33,8 +33,7 @@ def train(train_iter, dev_iter, model, round_, args):
 
             #print('logit vector', logit.size())
             #print('target vector', target.size())
-            if args.dataset == 'reuters': loss = F.binary_cross_entropy(logit, target) 
-            else: loss = F.cross_entropy(logit, target)
+            loss = F.cross_entropy(logit, target)
             loss.backward()
             optimizer.step()
 

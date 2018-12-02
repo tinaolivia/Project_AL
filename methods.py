@@ -5,6 +5,7 @@ import torch.nn as nn
 import torch.autograd as autograd
 import torchtext
 import torchtext.data as data
+import sys
 
 def random(data, subset, args):
     size = len(data)
@@ -24,6 +25,7 @@ def entropy(data, model, subset, act_func, args):
     ind = torch.zeros(args.inc)
     text_field = data.fields['text']
     for i,example in enumerate(data):
+        if i % int(len(data)/100) == 0: print(i)
         logit = get_output(example, text_field, model, args)
         logPy = act_func(logit)
         entropy = -(logPy*torch.exp(logPy)).sum()
@@ -47,7 +49,8 @@ def dropout(data, model, subset, act_func, args):
     top_var = torch.zeros(args.inc)
     ind = torch.zeros(args.inc)
     for i, example in enumerate(data):
-        probs = torch.zeros((args.num_pres, args.class_num))
+        if i % int(len(data)/100) == 0: print(i)
+        probs = torch.zeros((args.num_preds, args.class_num))
         feature, target = get_feature_target(example, text_field, args)
         
         for j in range(args.num_preds):
@@ -72,9 +75,10 @@ def dropout(data, model, subset, act_func, args):
 def vote_dropout(data, model, subset, args):
     model.train()
     top_ve = torch.zeros((args.inc))
-    ind = torcs.zeros((args.inc))
+    ind = torch.zeros((args.inc))
     text_field = data.fields['text']
     for i, example in enumerate(data):
+        if i % int(len(data)/100) == 0: print(i)
         preds = torch.zeros(args.num_preds)
         votes = torch.zeros(args.class_num)
         feature, target = get_feature_target(example, text_field, args)
@@ -153,7 +157,6 @@ def predict(text, model, text_field, label_feild, cuda_flag):
     return predicted.data[0]
 
 def update_datasets(train, test, subset, args):
-    
     fields = train.fields
     test = list(test)
     new_train = list(train)
