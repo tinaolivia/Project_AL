@@ -19,16 +19,20 @@ def random(data, subset, args):
             if n >= nsel: break
     
     return subset, n
-
+'''
 def entropy(data, model, subset, act_func, args):
     top_e = torch.zeros(args.inc)
+    if args.cuda: top_e = top_e.cuda()
     ind = torch.zeros(args.inc)
     text_field = data.fields['text']
     for i,example in enumerate(data):
         if i % int(len(data)/100) == 0: print(i)
         logit = get_output(example, text_field, model, args)
-        logPy = act_func(logit)
-        entropy = -(logPy*torch.exp(logPy)).sum()
+        if (torch.max(torch.isnan(logit)) == 1): entropy = torch.tensor([float('-inf')]) 
+        else:
+            logPy = act_func(logit)
+            entropy = -(logPy*torch.exp(logPy)).sum()
+        #if args.cuda: entropy.cuda()
         if i < args.inc:
             top_e[i] = entropy
             ind[i] = i
@@ -36,6 +40,32 @@ def entropy(data, model, subset, act_func, args):
             idx = torch.argmin(top_e)
             top_e[idx] = entropy
             ind[idx] = i
+            
+    total_entropy = top_e.sum()
+    for i in ind:
+        subset.append(i)
+        
+    return subset, args.inc, total_entropy'''
+
+def entropy(data,model,subset,act_func,args):
+    top_e = torch.zeros(args.inc)
+    if args.cuda: top_e = top_e.cuda()
+    ind = torch.zeros(args.inc)
+    text_field = data.fields['text']
+    order = torch.randperm(len(data))
+    for i,j in enumerate(order):
+        if i % int(len(data)/100) == 0: print(i)
+        logit = get_output(data[j],text_field,model,args)
+        logPy = act_func(logit)
+        entropy = -(logPy*torch.exp(logPy)).sum()
+        #if args.cuda: entropy.cuda()
+        if i < args.inc:
+            top_e[i] = entropy
+            ind[i] = j
+        elif entropy > torch.min(top_e):
+            idx = torch.argmin(top_e)
+            top_e[idx] = entropy
+            ind[idx] = j
             
     total_entropy = top_e.sum()
     for i in ind:
@@ -123,18 +153,20 @@ def get_feature_target(data, text_field, args):
 
 def get_output(data, text_field, model, args):
     model.eval()
-    feature,target = data.text, data.label
+    feature,target = data.text, torch.tensor(int(data.label))
     feature = [[text_field.vocab.stoi[x] for x in feature]]
-    feature = torch.tensor(feature)
-    if feature.shape[1] < max(args.kernel_sizes): 
-        feature = torch.cat((feature, torch.zeros((1,max(args.kernel_sizes)-feature.shape[1]),dtype=torch.long)), dim=1)
-    with torch.no_grad(): feature = autograd.Variable(feature)
-    if args.cuda:
-        feature, target = feature.cuda(), target.cuda()
+    if len(feature) > 0:
+        feature = torch.tensor(feature)
+        if feature.shape[1] < max(args.kernel_sizes): 
+            feature = torch.cat((feature, torch.zeros((1,max(args.kernel_sizes)-feature.shape[1]),dtype=torch.long)), dim=1)
+        with torch.no_grad(): feature = autograd.Variable(feature)
+        if args.cuda:
+            feature, target = feature.cuda(), target.cuda()
         
-    logit = model(feature)
+        logit = model(feature)
 
-    return logit
+        return logit
+    else: return torch.tensor([float('nan')])
 
 def predict(text, model, text_field, label_feild, cuda_flag):
     assert isinstance(text, str)

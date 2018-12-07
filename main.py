@@ -38,7 +38,7 @@ parser.add_argument('-kernel-sizes', type=str, default='3,4,5', help='comma-sepa
 parser.add_argument('-static', action='store_true', default=False, help='fix the embedding')
 # device
 parser.add_argument('-device', type=int, default=-1, help='device to use for iterate data, -1 mean cpu [default: -1]')
-parser.add_argument('-no-cuda', action='store_true', default=True, help='disable the gpu')
+parser.add_argument('-no-cuda', action='store_true', default=False, help='disable the gpu')
 # option
 parser.add_argument('-snapshot', type=str, default=None, help='filename of model snapshot [default: None]')
 parser.add_argument('-predict', type=str, default=None, help='predict the sentence given')
@@ -52,7 +52,10 @@ parser.add_argument('-num_preds', type=int, default=100, help='number of predict
 parser.add_argument('-test-method', action='store_true', default=False, help='testing active learning method [default: False]')
 args = parser.parse_args()
 
-
+filename = '{}_{}.txt'.format(args.dataset, args.method)
+with open(filename,'w') as file:
+    file.write('Running main.py with dataset:{} and method:{}'.format(args.dataset, args.method))
+    
 # load twitter dataset
 def twitter_iterator(text_field, label_field, **kargs):
     datafields = [("text", text_field), ("label", label_field)]
@@ -93,25 +96,23 @@ def news(text_field, label_field, **kargs):
 # load data
 if args.dataset == 'twitter':
     print("\nLoading Twitter data...")
+    open(filename,'a').write('\nLoading Twitter data ...')
     text_field = data.Field(lower=True)
     label_field = data.Field(sequential=False)
     print('\nDatasets ... ')
+    open(filename,'a').write('\nDatasets ...')
     train_set, val_set, test_set = twitter_dataset(text_field, label_field, device=-1, repeat=False)
     print('\nData iterators ... \n')
+    open(filename,'a').write('\nData iterators ...\n')
     train_iter, val_iter, test_iter = twitter_iterator(text_field, label_field, device=-1, repeat=False)
-    
-elif args.dataset == 'reuters':
-    print('\nLoading Reuters data ... ')
-    text_field = data.Field(lower=True)
-    label_field = data.Field(sequential=False)
-    print('\nDatasets and iterators ... ')
-    train_set, train_iter, val_set, val_iter, test_set, test_iter = reuters(text_field, label_field, device=-1, repeat=False)
     
 elif args.dataset == 'news':
     print('\nLoading Newsgroup 20 data ... ')
+    open(filename,'a').write('\nLoading 20 Newsgroup data ...')
     text_field = data.Field(lower=True)
     label_field = data.Field(sequential=False)
     print('\nDatasets and iterators ... ' )
+    open(filename,'a').write('\nDatasets and iterators ... \n')
     train_set, train_iter, val_set, val_iter, test_set, test_iter = news(text_field, label_field, device=-1, repeat=False)
 
 
@@ -123,15 +124,19 @@ args.kernel_sizes = [int(k) for k in args.kernel_sizes.split(',')]
 args.save_dir = os.path.join(args.save_dir, datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S'))
 
 print("\nParameters:")
+open(filename,'a').write('\nParameters:\n')
 for attr, value in sorted(args.__dict__.items()):
     print("\t{}={}".format(attr.upper(), value))
+    open(filename,'a').write('\n\t{}={}'.format(attr.upper(),value))
 
 
 # model
+open(filename,'a').write('\nDefining model ... ')
 cnn = model.CNN_Text(args)
 #train.save(cnn, args.save_dir, 'snapshot', 0)
 if args.snapshot is not None:
     print('\nLoading model from {}...'.format(args.snapshot))
+    open(filename,'a').write('\nLoading model from {} ...\n'.format(args.snapshot))
     cnn.load_state_dict(torch.load(args.snapshot))
 
 if args.cuda:
@@ -140,13 +145,18 @@ if args.cuda:
     
 # train or predict
 if args.predict is not None:
+    open(filename,'a').write('\nPredicting ...')
     label = train.predict(args.predict, cnn, text_field, label_field, args.cuda)
     print('\n[Text]  {}\n[Label] {}\n'.format(args.predict, label))
+    open(filename,'a').write('\n[Text] {}\n[Label] {}\n'.format(args.predict, label))
 elif args.test:
+    open(filename,'a').write('\nTesting ...')
     train.evaluate(test_iter, cnn, args)
 elif (args.test_method) and (args.method is not None):
+    open(filename,'a').write('\nTesting method ...')
     test.test(train_set, val_iter, cnn, args)
 elif args.method is not None:
+    open(filename,'a').write('\nTraining ...')
     train_al.train_with_al(train_set,val_set,test_set,cnn,args)
 else:
     print()
@@ -155,3 +165,5 @@ else:
     except KeyboardInterrupt:
         print('\n' + '-' * 89)
         print('Exiting from training early')
+        open(filename,'a').write('\n' + '-' * 89)
+        open(filename,'a').write('\nExiting from training early. \n')

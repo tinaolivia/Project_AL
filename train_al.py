@@ -109,7 +109,7 @@ def train_with_al(train_set, val_set, test_set, model, args):
         train_iter = data.BucketIterator(train_set, batch_size=args.batch_size, device=-1, repeat=False)
         #test_iter = data.BucketIterator(test_set, batch_size=args.batch_size, device=-1, repeat=False)
         
-        model.load_state_dict(torch.load('snapshot/{}_initial_model.pt'.format(args.dataset)))
+        model.load_state_dict(torch.load('{}'.format(args.snapshot)))
         
         train(train_iter, val_iter, model, al_iter, args)
         
