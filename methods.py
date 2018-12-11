@@ -19,53 +19,32 @@ def random(data, subset, args):
             if n >= nsel: break
     
     return subset, n
-'''
+
 def entropy(data, model, subset, act_func, args):
-    top_e = torch.zeros(args.inc)
-    if args.cuda: top_e = top_e.cuda()
+    model.eval()
+    top_e = float('-inf')*torch.ones(args.inc)
+    if args.cuda: top_e, act_func = top_e.cuda(), act_func.cuda()
     ind = torch.zeros(args.inc)
     text_field = data.fields['text']
+    n = 0
     for i,example in enumerate(data):
         if i % int(len(data)/100) == 0: print(i)
         logit = get_output(example, text_field, model, args)
-        if (torch.max(torch.isnan(logit)) == 1): entropy = torch.tensor([float('-inf')]) 
+        if (torch.max(torch.isnan(logit)) == 1): 
+            entropy = torch.tensor([-1]) 
+            print('NaN returned from get_output, iter {}'.format(i))
         else:
+            if args.cuda: logit = logit.cuda()
             logPy = act_func(logit)
             entropy = -(logPy*torch.exp(logPy)).sum()
-        #if args.cuda: entropy.cuda()
-        if i < args.inc:
-            top_e[i] = entropy
-            ind[i] = i
-        elif entropy > torch.min(top_e):
-            idx = torch.argmin(top_e)
-            top_e[idx] = entropy
-            ind[idx] = i
+        if args.cuda: entropy = entropy.cuda()            
+        if entropy.float() > torch.min(top_e).float():
+            n += 1
+            min_e, idx = torch.min(top_e, dim=0)
+            top_e[int(idx)] = entropy
+            ind[int(idx)] = i
             
-    total_entropy = top_e.sum()
-    for i in ind:
-        subset.append(i)
-        
-    return subset, args.inc, total_entropy'''
-
-def entropy(data,model,subset,act_func,args):
-    top_e = torch.zeros(args.inc)
-    if args.cuda: top_e = top_e.cuda()
-    ind = torch.zeros(args.inc)
-    text_field = data.fields['text']
-    order = torch.randperm(len(data))
-    for i,j in enumerate(order):
-        if i % int(len(data)/100) == 0: print(i)
-        logit = get_output(data[j],text_field,model,args)
-        logPy = act_func(logit)
-        entropy = -(logPy*torch.exp(logPy)).sum()
-        #if args.cuda: entropy.cuda()
-        if i < args.inc:
-            top_e[i] = entropy
-            ind[i] = j
-        elif entropy > torch.min(top_e):
-            idx = torch.argmin(top_e)
-            top_e[idx] = entropy
-            ind[idx] = j
+    print('\nNumber of times new entropy value is added: {}'.format(n))
             
     total_entropy = top_e.sum()
     for i in ind:
@@ -76,25 +55,29 @@ def entropy(data,model,subset,act_func,args):
 def dropout(data, model, subset, act_func, args):
     model.train()
     text_field = data.fields['text']
-    top_var = torch.zeros(args.inc)
+    top_var = float('-inf')*torch.ones(args.inc)
+    if args.cuda: top_var = top_var.cuda()
     ind = torch.zeros(args.inc)
     for i, example in enumerate(data):
         if i % int(len(data)/100) == 0: print(i)
         probs = torch.zeros((args.num_preds, args.class_num))
-        feature, target = get_feature_target(example, text_field, args)
+        if args.cuda: probs = probs.cuda()
+        feature = get_feature(example, text_field, args)
+        if torch.max(torch.isnan(feature)) == 1: 
+            var = torch.tensor([float('-inf')])
+            print('\nNaN returned from get_feature, iter {}'.format(i))
+        else:
+            if args.cuda: feature, act_func = feature.cuda(), act_func.cuda()
+            for j in range(args.num_preds):
+                probs[j,:] = act_func(model(feature))
+            
+            var = torch.abs(probs - probs.mean(dim=0)).sum() # absolute value or squared here?
+        if args.cuda: var = var.cuda()            
+        if var > torch.min(top_var):
+            min_var, idx = torch.min(top_var,dim=0)
+            top_var[int(idx)] = var
+            ind[int(idx)] = i
         
-        for j in range(args.num_preds):
-            probs[j,:] = act_func(model(feature))
-            
-        var = torch.abs(probs - probs.mean(dim=0)).sum()
-        if i < args.inc:
-            top_var[i] = var
-            ind[i] = i
-        elif var > torch.min(top_var):
-            idx = torch.argmin(top_var)
-            top_var[idx] = var
-            ind[idx] = i
-            
     total_var = top_var.sum()
     for i in ind:
         subset.append(i)
@@ -104,14 +87,16 @@ def dropout(data, model, subset, act_func, args):
 
 def vote_dropout(data, model, subset, args):
     model.train()
-    top_ve = torch.zeros((args.inc))
+    top_ve = float('-inf')*torch.ones(args.inc)
+    if args.cuda: top_ve = top_ve.cuda()
     ind = torch.zeros((args.inc))
     text_field = data.fields['text']
     for i, example in enumerate(data):
         if i % int(len(data)/100) == 0: print(i)
         preds = torch.zeros(args.num_preds)
         votes = torch.zeros(args.class_num)
-        feature, target = get_feature_target(example, text_field, args)
+        feature = get_feature(example, text_field, args)
+        if args.cuda: preds, votes, features = preds.cuda(), votes.cuda(), features.cuda()
         
         for j in range(args.num_preds):
             preds[j] = torch.max(model(feature),1)[1]
@@ -120,14 +105,12 @@ def vote_dropout(data, model, subset, args):
             votes[j] = (preds == j).sum()/args.num_preds
             
         ventropy = -(votes*torch.log(votes)).sum()
-            
-        if i < args.inc:
-            top_ve[i] = ventropy
-            ind[i] = i
-        elif ventropy > torch.min(top_ve):
-            idx = torch.argmin(top_ve)
-            top_ve[idx] = ventropy
-            ind[idx] = ventropy
+        
+        if args.cuda: ventropy = ventropy.cuda()    
+        if ventropy > torch.min(top_ve):
+            min_ve, idx = torch.min(top_ve,dim=0)
+            top_ve[int(idx)] = ventropy
+            ind[int(idx)] = i 
             
     total_ve = top_ve.sum()
     for i in ind:
@@ -142,32 +125,35 @@ def get_iter_size(data_iter,args): # LEGG DENNE FUNKSJONEN I EN ANNEN FIL
         size += len(batch)
     return size
 
-def get_feature_target(data, text_field, args):
-    feature, target= data.text, data.label
-    feature = torch.tensor([[text_field.vocab.stoi[x] for x in feature]])
-    if feature.shape[1] < max(args.kernel_sizes):
-        feature = torch.cat((feature, torch.zeros((1, max(args.kernel_sizes)-feature.shape[1]),dtype=torch.long)), dim=1)
-    with torch.no_grad(): feature = autograd.Variable(feature)
-    if args.cuda: feature, target = feature.cuda(), target.cuda()
-    return feature, target
+def get_feature(data, text_field, args):
+    feature = data.text
+    feature = [[text_field.vocab.stoi[x] for x in feature]]
+    if len(feature[0]) <1: feature = torch.tensor([float('nan')])
+    else: 
+        feature = torch.tensor(feature)
+        if feature.shape[1] < max(args.kernel_sizes):
+            feature = torch.cat((feature, torch.zeros((1, max(args.kernel_sizes)-feature.shape[1]),dtype=torch.long)), dim=1)
+            with torch.no_grad(): feature = autograd.Variable(feature)
+            if args.cuda: feature = feature.cuda()
+    return feature
 
 def get_output(data, text_field, model, args):
     model.eval()
-    feature,target = data.text, torch.tensor(int(data.label))
+    feature = data.text
     feature = [[text_field.vocab.stoi[x] for x in feature]]
-    if len(feature) > 0:
+    if len(feature[0]) < 1: logit = torch.tensor([float('nan')])
+    else:
         feature = torch.tensor(feature)
         if feature.shape[1] < max(args.kernel_sizes): 
             feature = torch.cat((feature, torch.zeros((1,max(args.kernel_sizes)-feature.shape[1]),dtype=torch.long)), dim=1)
         with torch.no_grad(): feature = autograd.Variable(feature)
         if args.cuda:
-            feature, target = feature.cuda(), target.cuda()
+            feature = feature.cuda()
         
         logit = model(feature)
 
-        return logit
-    else: return torch.tensor([float('nan')])
-
+    return logit
+    
 def predict(text, model, text_field, label_feild, cuda_flag):
     assert isinstance(text, str)
     model.eval()

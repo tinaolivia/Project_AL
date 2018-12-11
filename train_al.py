@@ -70,8 +70,9 @@ def train_with_al(train_set, val_set, test_set, model, args):
     
     #softmax = nn.Softmax(dim=1)
     log_softmax = nn.LogSoftmax(dim=1)
+    if args.cuda: log_softmax = log_softmax.cuda()
     val_iter = data.BucketIterator(test_set, batch_size=args.batch_size, device=-1, repeat=False)
-    
+        
     for al_iter in range(args.rounds):
         
         subset = []
@@ -99,7 +100,8 @@ def train_with_al(train_set, val_set, test_set, model, args):
             subset, n, total_ve = methods.vote_dropout(test_set, model, subset, args)
             print('\nIter {}, selected {} by dropout and vote entropy, total vote entropy {}\n'.format(al_iter, n, total_ve))
             #print('subset after: ', subset)
-            
+        
+        print('\nUpdatin datasets ...')
         train_set, test_set = methods.update_datasets(train_set, test_set, subset, args)
 
         #print(train_set, test_set)
@@ -109,12 +111,15 @@ def train_with_al(train_set, val_set, test_set, model, args):
         train_iter = data.BucketIterator(train_set, batch_size=args.batch_size, device=-1, repeat=False)
         #test_iter = data.BucketIterator(test_set, batch_size=args.batch_size, device=-1, repeat=False)
         
-        model.load_state_dict(torch.load('{}'.format(args.snapshot)))
+        print('\nLoading initial model for dataset {} ...'.format(args.dataset))
+        model.load_state_dict(torch.load(args.snapshot))
+        
         
         train(train_iter, val_iter, model, al_iter, args)
         
         print('\n\nLoading model {}, method {}'.format(al_iter, args.method))
         model.load_state_dict(torch.load('{}/al_{}_{}.pt'.format(args.method, args.dataset, al_iter)))
+        
 
         
 
