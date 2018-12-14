@@ -72,6 +72,13 @@ def train_with_al(train_set, val_set, test_set, model, args):
     log_softmax = nn.LogSoftmax(dim=1)
     if args.cuda: log_softmax = log_softmax.cuda()
     val_iter = data.BucketIterator(test_set, batch_size=args.batch_size, device=-1, repeat=False)
+    
+    initial_acc = evaluate(val_iter, model, args).cpu()
+    with open('accuracies/{}_{}.csv'.format(args.method, args.dataset), mode='w') as csvfile:
+        csvwriter = csv.writer(csvfile, delimiter=',', quotechar='"', quoting=csv.QUOTE_MINIMAL)
+        csvwriter.writerow(['Train Size', 'Accuracy'])
+        csvwriter.writerow([len(train_set) , initial_acc.numpy()])
+        
         
     for al_iter in range(args.rounds):
         
@@ -101,7 +108,7 @@ def train_with_al(train_set, val_set, test_set, model, args):
             print('\nIter {}, selected {} by dropout and vote entropy, total vote entropy {}\n'.format(al_iter, n, total_ve))
             #print('subset after: ', subset)
         
-        print('\nUpdatin datasets ...')
+        print('\nUpdating datasets ...')
         train_set, test_set = methods.update_datasets(train_set, test_set, subset, args)
 
         #print(train_set, test_set)
@@ -119,6 +126,11 @@ def train_with_al(train_set, val_set, test_set, model, args):
         
         print('\n\nLoading model {}, method {}'.format(al_iter, args.method))
         model.load_state_dict(torch.load('{}/al_{}_{}.pt'.format(args.method, args.dataset, al_iter)))
+        
+        acc = evaluate(val_iter, model, args).cpu()
+        with open('accuracies/{}_{}.csv'.format(args.method,args.dataset), mode='a') as csvfile:
+            csvwriter = csv.writer(csvfile, delimiter=',', quotechar='"', quoting=csv.QUOTE_MINIMAL)
+            csvwriter.writerow([len(train_set), acc.numpy()])
         
 
         

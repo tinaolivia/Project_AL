@@ -97,6 +97,8 @@ def predict(text, model, text_field, label_feild, cuda_flag):
         x = x.cuda()
     print('x: ',x)
     output = model(x)
+    softmax = torch.nn.Softmax(dim=1)
+    print(softmax(output))
     print('output: ',output)
     _, predicted = torch.max(output, 1)
     #return label_feild.vocab.itos[predicted.data[0][0]+1]

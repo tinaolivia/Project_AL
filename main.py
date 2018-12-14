@@ -48,14 +48,14 @@ parser.add_argument('-method', type=str, default=None, choices=['random','entrop
                     help='active learning query strategy [default: None]')
 parser.add_argument('-rounds', type=int, default=100, help='rounds of active querying [default: 100]')
 parser.add_argument('-inc', type=int, default=100, help='number of instances added to training data at each round [default: 100]')
-parser.add_argument('-num_preds', type=int, default=100, help='number of predictions made when computing dropout uncertainty [default:100]')
+parser.add_argument('-num-preds', type=int, default=100, help='number of predictions made when computing dropout uncertainty [default:100]')
 parser.add_argument('-test-method', action='store_true', default=False, help='testing active learning method [default: False]')
 args = parser.parse_args()
     
 # load twitter dataset
 def twitter_iterator(text_field, label_field, **kargs):
     datafields = [("text", text_field), ("label", label_field)]
-    trn, val, tst = data.TabularDataset.splits(path='data', train='train.csv', validation='val.csv',test='test.csv',
+    trn, val, tst = data.TabularDataset.splits(path='data', train='train.csv', validation='val.csv',test='test_small.csv',
                                                format='csv', fields=datafields)
     text_field.build_vocab(trn)
     label_field.build_vocab(trn)
@@ -66,7 +66,7 @@ def twitter_iterator(text_field, label_field, **kargs):
 
 def twitter_dataset(text_field,label_field,**kargs):
     datafields = [("text",text_field),("label",label_field)]
-    trn, val, tst = data.TabularDataset.splits(path='data',train='train.csv', validation='val.csv', test='test.csv',
+    trn, val, tst = data.TabularDataset.splits(path='data',train='train.csv', validation='val.csv', test='test_small.csv',
                                                format='csv', fields=datafields)
     text_field.build_vocab(trn)
     label_field.build_vocab(trn)
@@ -76,8 +76,8 @@ def twitter_dataset(text_field,label_field,**kargs):
 
 def news(text_field, label_field, **kargs):
     datafields = [("text", text_field),("label", label_field)]
-    trn, val, tst = data.TabularDataset.splits(path='data', train='news_train.tsv', validation='news_val.tsv',
-                                               test='news_test.tsv', format='tsv', fields=datafields)
+    trn, val, tst = data.TabularDataset.splits(path='data', train='news_train.csv', validation='news_val.csv',
+                                               test='news_test.csv', format='csv', fields=datafields)
     
     text_field.build_vocab(trn)
     label_field.build_vocab(trn)
@@ -125,7 +125,7 @@ cnn = model.CNN_Text(args)
 #train.save(cnn, args.save_dir, 'snapshot', 0)
 if args.snapshot is not None:
     print('\nLoading model from {}...'.format(args.snapshot))
-    cnn.load_state_dict(torch.load(args.snapshot))
+    cnn.load_state_dict(torch.load(args.snapshot,map_location='cpu'))
 
 if args.cuda:
     torch.cuda.set_device(args.device)

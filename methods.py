@@ -17,7 +17,6 @@ def random(data, subset, args):
             subset.append(int(i))
             n += 1
             if n >= nsel: break
-    
     return subset, n
 
 def entropy(data, model, subset, act_func, args):
@@ -26,7 +25,7 @@ def entropy(data, model, subset, act_func, args):
     if args.cuda: top_e, act_func = top_e.cuda(), act_func.cuda()
     ind = torch.zeros(args.inc)
     text_field = data.fields['text']
-    n = 0
+    
     for i,example in enumerate(data):
         if i % int(len(data)/100) == 0: print(i)
         logit = get_output(example, text_field, model, args)
@@ -39,13 +38,10 @@ def entropy(data, model, subset, act_func, args):
             entropy = -(logPy*torch.exp(logPy)).sum()
         if args.cuda: entropy = entropy.cuda()            
         if entropy.float() > torch.min(top_e).float():
-            n += 1
             min_e, idx = torch.min(top_e, dim=0)
             top_e[int(idx)] = entropy
             ind[int(idx)] = i
-            
-    print('\nNumber of times new entropy value is added: {}'.format(n))
-            
+                        
     total_entropy = top_e.sum()
     for i in ind:
         subset.append(i)
@@ -53,6 +49,7 @@ def entropy(data, model, subset, act_func, args):
     return subset, args.inc, total_entropy
             
 def dropout(data, model, subset, act_func, args):
+    if args.cuda: model = model.cuda()
     model.train()
     text_field = data.fields['text']
     top_var = float('-inf')*torch.ones(args.inc)
@@ -60,27 +57,29 @@ def dropout(data, model, subset, act_func, args):
     ind = torch.zeros(args.inc)
     for i, example in enumerate(data):
         if i % int(len(data)/100) == 0: print(i)
-        probs = torch.zeros((args.num_preds, args.class_num))
+        probs = torch.empty((args.num_preds, args.class_num))
         if args.cuda: probs = probs.cuda()
         feature = get_feature(example, text_field, args)
         if torch.max(torch.isnan(feature)) == 1: 
             var = torch.tensor([float('-inf')])
-            print('\nNaN returned from get_feature, iter {}'.format(i))
+            print('NaN returned from get_feature, iter {}'.format(i))
         else:
             if args.cuda: feature, act_func = feature.cuda(), act_func.cuda()
             for j in range(args.num_preds):
-                probs[j,:] = act_func(model(feature))
-            
+                if args.cuda: probs[j,:] = act_func(model(feature)).cuda()
+                else: probs[j,:] = act_func(model(feature)) 
             var = torch.abs(probs - probs.mean(dim=0)).sum() # absolute value or squared here?
         if args.cuda: var = var.cuda()            
         if var > torch.min(top_var):
             min_var, idx = torch.min(top_var,dim=0)
             top_var[int(idx)] = var
             ind[int(idx)] = i
-        
+    
     total_var = top_var.sum()
     for i in ind:
         subset.append(i)
+        
+    model.eval()
         
     return subset, args.inc, total_var
 
@@ -96,7 +95,7 @@ def vote_dropout(data, model, subset, args):
         preds = torch.zeros(args.num_preds)
         votes = torch.zeros(args.class_num)
         feature = get_feature(example, text_field, args)
-        if args.cuda: preds, votes, features = preds.cuda(), votes.cuda(), features.cuda()
+        if args.cuda: preds, votes, feature = preds.cuda(), votes.cuda(), feature.cuda()
         
         for j in range(args.num_preds):
             preds[j] = torch.max(model(feature),1)[1]
@@ -128,7 +127,8 @@ def get_iter_size(data_iter,args): # LEGG DENNE FUNKSJONEN I EN ANNEN FIL
 def get_feature(data, text_field, args):
     feature = data.text
     feature = [[text_field.vocab.stoi[x] for x in feature]]
-    if len(feature[0]) <1: feature = torch.tensor([float('nan')])
+    if len(feature[0]) < 1: 
+        feature = torch.tensor([float('nan')])
     else: 
         feature = torch.tensor(feature)
         if feature.shape[1] < max(args.kernel_sizes):
