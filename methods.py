@@ -37,11 +37,12 @@ def entropy(data, model, subset, act_func, args):
             logPy = act_func(logit)
             entropy = -(logPy*torch.exp(logPy)).sum()
         if args.cuda: entropy = entropy.cuda()            
-        if entropy.float() > torch.min(top_e).float():
+        if entropy.double() > torch.min(top_e).double():
             min_e, idx = torch.min(top_e, dim=0)
-            top_e[int(idx)] = entropy
+            top_e[int(idx)] = entropy.double()
             ind[int(idx)] = i
                         
+    print('Top entropy: ', top_e)
     total_entropy = top_e.sum()
     for i in ind:
         subset.append(i)
@@ -65,6 +66,7 @@ def dropout(data, model, subset, act_func, args):
             print('NaN returned from get_feature, iter {}'.format(i))
         else:
             if args.cuda: feature, act_func = feature.cuda(), act_func.cuda()
+            
             for j in range(args.num_preds):
                 if args.cuda: probs[j,:] = act_func(model(feature)).cuda()
                 else: probs[j,:] = act_func(model(feature)) 
@@ -75,6 +77,7 @@ def dropout(data, model, subset, act_func, args):
             top_var[int(idx)] = var
             ind[int(idx)] = i
     
+    print('Top variance: {}'.format(top_var))
     total_var = top_var.sum()
     for i in ind:
         subset.append(i)
@@ -84,7 +87,7 @@ def dropout(data, model, subset, act_func, args):
     return subset, args.inc, total_var
 
 
-def vote_dropout(data, model, subset, args):
+def vote(data, model, subset, args):
     model.train()
     top_ve = float('-inf')*torch.ones(args.inc)
     if args.cuda: top_ve = top_ve.cuda()
@@ -98,7 +101,7 @@ def vote_dropout(data, model, subset, args):
         if args.cuda: preds, votes, feature = preds.cuda(), votes.cuda(), feature.cuda()
         
         for j in range(args.num_preds):
-            preds[j] = torch.max(model(feature),1)[1]
+            _, preds[j] = torch.max(model(feature),1)
             
         for j in range(args.class_num):
             votes[j] = (preds == j).sum()/args.num_preds
@@ -111,10 +114,13 @@ def vote_dropout(data, model, subset, args):
             top_ve[int(idx)] = ventropy
             ind[int(idx)] = i 
             
+    print('Top vote entropy: {}'.format(top_ve))
     total_ve = top_ve.sum()
     for i in ind:
         subset.append(i)
-            
+        
+    model.eval()
+
     return subset, args.inc, total_ve
 
 

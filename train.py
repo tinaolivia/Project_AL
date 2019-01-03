@@ -55,6 +55,9 @@ def train(train_iter, dev_iter, model, args):
             elif steps % args.save_interval == 0:
                 save(model, args.save_dir, 'snapshot', steps)
 
+    dev_acc = evaluate(dev_iter, model, args)
+    save(model, args.save_dir, 'snapshot', steps)
+
 
 def evaluate(data_iter, model, args):
     model.eval()

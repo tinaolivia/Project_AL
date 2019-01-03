@@ -78,9 +78,11 @@ def train_with_al(train_set, val_set, test_set, model, args):
         csvwriter = csv.writer(csvfile, delimiter=',', quotechar='"', quoting=csv.QUOTE_MINIMAL)
         csvwriter.writerow(['Train Size', 'Accuracy'])
         csvwriter.writerow([len(train_set) , initial_acc.numpy()])
-        
-        
-    for al_iter in range(args.rounds):
+    
+    al_iter = 0
+    acc = initial_acc
+    
+    while acc < args.criterion and al_iter < args.rounds:
         
         subset = []
         
@@ -102,12 +104,12 @@ def train_with_al(train_set, val_set, test_set, model, args):
             print('\nIter {}, selected {} samples with dropout, total variability {}\n'.format(al_iter, n, total_var))
             #print('subset after: ', subset)
                     
-        # NB! for now, this is made for positive/negative sentiment ananlysis
-        if args.method == 'vote dropout':
-            subset, n, total_ve = methods.vote_dropout(test_set, model, subset, args)
+        if args.method == 'vote':
+            subset, n, total_ve = methods.vote(test_set, model, subset, args)
             print('\nIter {}, selected {} by dropout and vote entropy, total vote entropy {}\n'.format(al_iter, n, total_ve))
             #print('subset after: ', subset)
         
+        print('\nSubset: {}'.format(subset))
         print('\nUpdating datasets ...')
         train_set, test_set = methods.update_datasets(train_set, test_set, subset, args)
 
@@ -121,7 +123,7 @@ def train_with_al(train_set, val_set, test_set, model, args):
         print('\nLoading initial model for dataset {} ...'.format(args.dataset))
         model.load_state_dict(torch.load(args.snapshot))
         
-        
+        print('\nTraining new model ...')
         train(train_iter, val_iter, model, al_iter, args)
         
         print('\n\nLoading model {}, method {}'.format(al_iter, args.method))
@@ -131,6 +133,8 @@ def train_with_al(train_set, val_set, test_set, model, args):
         with open('accuracies/{}_{}.csv'.format(args.method,args.dataset), mode='a') as csvfile:
             csvwriter = csv.writer(csvfile, delimiter=',', quotechar='"', quoting=csv.QUOTE_MINIMAL)
             csvwriter.writerow([len(train_set), acc.numpy()])
+
+        al_iter += 1
         
 
         

@@ -44,18 +44,19 @@ parser.add_argument('-snapshot', type=str, default=None, help='filename of model
 parser.add_argument('-predict', type=str, default=None, help='predict the sentence given')
 parser.add_argument('-test', action='store_true', default=False, help='train or test')
 # active learning 
-parser.add_argument('-method', type=str, default=None, choices=['random','entropy','vote dropout', 'dropout'],
+parser.add_argument('-method', type=str, default=None, choices=['random','entropy','vote', 'dropout'],
                     help='active learning query strategy [default: None]')
-parser.add_argument('-rounds', type=int, default=100, help='rounds of active querying [default: 100]')
-parser.add_argument('-inc', type=int, default=100, help='number of instances added to training data at each round [default: 100]')
-parser.add_argument('-num-preds', type=int, default=100, help='number of predictions made when computing dropout uncertainty [default:100]')
-parser.add_argument('-test-method', action='store_true', default=False, help='testing active learning method [default: False]')
+parser.add_argument('-rounds', type=int, default=500, help='rounds of active querying [default: 500]')
+parser.add_argument('-inc', type=int, default=1, help='number of instances added to training data at each round [default: 1]')
+parser.add_argument('-num-preds', type=int, default=5, help='number of predictions made when computing dropout uncertainty [default:5]')
+#parser.add_argument('-test-method', action='store_true', default=False, help='testing active learning method [default: False]')
+parser.add_argument('-criterion', type=float, default=75, help='stopping criterion, accuracy [default:75]')
 args = parser.parse_args()
     
 # load twitter dataset
 def twitter_iterator(text_field, label_field, **kargs):
     datafields = [("text", text_field), ("label", label_field)]
-    trn, val, tst = data.TabularDataset.splits(path='data', train='train.csv', validation='val.csv',test='test_small.csv',
+    trn, val, tst = data.TabularDataset.splits(path='data', train='train.csv', validation='val.csv',test='test.csv',
                                                format='csv', fields=datafields)
     text_field.build_vocab(trn)
     label_field.build_vocab(trn)
@@ -66,7 +67,7 @@ def twitter_iterator(text_field, label_field, **kargs):
 
 def twitter_dataset(text_field,label_field,**kargs):
     datafields = [("text",text_field),("label",label_field)]
-    trn, val, tst = data.TabularDataset.splits(path='data',train='train.csv', validation='val.csv', test='test_small.csv',
+    trn, val, tst = data.TabularDataset.splits(path='data',train='train.csv', validation='val.csv', test='test.csv',
                                                format='csv', fields=datafields)
     text_field.build_vocab(trn)
     label_field.build_vocab(trn)
@@ -137,8 +138,8 @@ if args.predict is not None:
     print('\n[Text]  {}\n[Label] {}\n'.format(args.predict, label))
 elif args.test:
     train.evaluate(test_iter, cnn, args)
-elif (args.test_method) and (args.method is not None):
-    test.test(train_set, val_iter, cnn, args)
+#elif (args.test_method) and (args.method is not None):
+    #test.test(train_set, val_iter, cnn, args)
 elif args.method is not None:
     train_al.train_with_al(train_set,val_set,test_set,cnn,args)
 else:
