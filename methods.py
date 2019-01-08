@@ -25,6 +25,9 @@ def entropy(data, model, subset, act_func, args):
     if args.cuda: top_e, act_func = top_e.cuda(), act_func.cuda()
     ind = torch.zeros(args.inc)
     text_field = data.fields['text']
+    if args.hist: 
+        hist = torch.zeros(40)
+        if args.cuda: hist = hist.cuda()
     
     for i,example in enumerate(data):
         if i % int(len(data)/100) == 0: print(i)
@@ -36,6 +39,7 @@ def entropy(data, model, subset, act_func, args):
             if args.cuda: logit = logit.cuda()
             logPy = act_func(logit)
             entropy = -(logPy*torch.exp(logPy)).sum()
+            if args.hist: hist[int(entropy*10)] += 1
         if args.cuda: entropy = entropy.cuda()            
         if entropy.double() > torch.min(top_e).double():
             min_e, idx = torch.min(top_e, dim=0)
@@ -47,7 +51,8 @@ def entropy(data, model, subset, act_func, args):
     for i in ind:
         subset.append(i)
         
-    return subset, args.inc, total_entropy
+    if args.hist: return subset, args.inc, total_entropy, hist
+    else: return subset, args.inc, total_entropy 
             
 def dropout(data, model, subset, act_func, args):
     if args.cuda: model = model.cuda()
@@ -56,6 +61,9 @@ def dropout(data, model, subset, act_func, args):
     top_var = float('-inf')*torch.ones(args.inc)
     if args.cuda: top_var = top_var.cuda()
     ind = torch.zeros(args.inc)
+    if args.hist: 
+        hist = torch.zeros(1000)
+        if args.cuda: hist = hist.cuda()
     for i, example in enumerate(data):
         if i % int(len(data)/100) == 0: print(i)
         probs = torch.empty((args.num_preds, args.class_num))
@@ -71,7 +79,8 @@ def dropout(data, model, subset, act_func, args):
                 if args.cuda: probs[j,:] = act_func(model(feature)).cuda()
                 else: probs[j,:] = act_func(model(feature)) 
             var = torch.abs(probs - probs.mean(dim=0)).sum() # absolute value or squared here?
-        if args.cuda: var = var.cuda()            
+        if args.cuda: var = var.cuda()    
+        if args.hist: hist[int(var)] += 1        
         if var > torch.min(top_var):
             min_var, idx = torch.min(top_var,dim=0)
             top_var[int(idx)] = var
@@ -84,7 +93,8 @@ def dropout(data, model, subset, act_func, args):
         
     model.eval()
         
-    return subset, args.inc, total_var
+    if args.hist: return subset, args.inc, total_var, hist
+    else: return subset, args.inc, total_var 
 
 
 def vote(data, model, subset, args):
@@ -98,15 +108,19 @@ def vote(data, model, subset, args):
         preds = torch.zeros(args.num_preds)
         votes = torch.zeros(args.class_num)
         feature = get_feature(example, text_field, args)
-        if args.cuda: preds, votes, feature = preds.cuda(), votes.cuda(), feature.cuda()
+        if torch.max(torch.isnan(feature)) == 1: 
+            ventropy = torch.tensor([float('-inf')])
+            print('NaN returned from get_feature, iter {}'.format(i))
+        else:
+            if args.cuda: preds, votes, feature = preds.cuda(), votes.cuda(), feature.cuda()
         
-        for j in range(args.num_preds):
-            _, preds[j] = torch.max(model(feature),1)
+            for j in range(args.num_preds):
+                _, preds[j] = torch.max(model(feature),1)
             
-        for j in range(args.class_num):
-            votes[j] = (preds == j).sum()/args.num_preds
+            for j in range(args.class_num):
+                votes[j] = (preds == j).sum()/args.num_preds
             
-        ventropy = -(votes*torch.log(votes)).sum()
+            ventropy = -(votes*torch.log(votes)).sum()
         
         if args.cuda: ventropy = ventropy.cuda()    
         if ventropy > torch.min(top_ve):
@@ -122,13 +136,6 @@ def vote(data, model, subset, args):
     model.eval()
 
     return subset, args.inc, total_ve
-
-
-def get_iter_size(data_iter,args): # LEGG DENNE FUNKSJONEN I EN ANNEN FIL
-    size = 0
-    for batch in data_iter:
-        size += len(batch)
-    return size
 
 def get_feature(data, text_field, args):
     feature = data.text
@@ -159,26 +166,6 @@ def get_output(data, text_field, model, args):
         logit = model(feature)
 
     return logit
-    
-def predict(text, model, text_field, label_feild, cuda_flag):
-    assert isinstance(text, str)
-    model.eval()
-    # text = text_field.tokenize(text)
-    text = text_field.preprocess(text)
-    text = [[text_field.vocab.stoi[x] for x in text]]
-    x = text_field.tensor_type(text)
-    #x = autograd.Variable(x, volatile=True)
-    with torch.no_grad():
-        x = autograd.Variable(x)
-    if cuda_flag:
-        x = x.cuda()
-    print(x)
-    output = model(x)
-    print(output)
-    _, predicted = torch.max(output, 1)
-    #return label_feild.vocab.itos[predicted.data[0][0]+1]
-    #return label_feild.vocab.itos[predicted.data[0]+1]
-    return predicted.data[0]
 
 def update_datasets(train, test, subset, args):
     fields = train.fields
