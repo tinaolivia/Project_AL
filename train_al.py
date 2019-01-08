@@ -31,8 +31,6 @@ def train(train_iter, dev_iter, model, round_, args):
             optimizer.zero_grad()
             logit = model(feature)
 
-            #print('logit vector', logit.size())
-            #print('target vector', target.size())
             loss = F.cross_entropy(logit, target)
             loss.backward()
             optimizer.step()
@@ -49,35 +47,51 @@ def train(train_iter, dev_iter, model, round_, args):
                                                                              batch.batch_size))
             
             if steps % args.test_interval == 0:
-                dev_acc = evaluate(dev_iter, model, args)
+                dev_acc, dev_loss = evaluate(dev_iter, model, args)
                 if dev_acc > best_acc:
                     best_acc = dev_acc
                     last_step = steps
-                #    if args.save_best:
-                #        save(model, args.save_dir, 'best', steps, args)
+
                 else:
                     if steps - last_step >= args.early_stop:
                         print('early stop by {} steps.'.format(args.early_stop))
-            #elif steps % args.save_interval == 0:
-             #   save(model, 'al', 'snapshot', steps)
+
              
     save(model, save_dir=args.method, save_prefix='al', steps=steps, round_=round_, args=args, al=True)
                 
 
-
-#NB! for now this is only for binary classification (neg/pos sentiment analysis)
 def train_with_al(train_set, val_set, test_set, model, args):
     
-    #softmax = nn.Softmax(dim=1)
     log_softmax = nn.LogSoftmax(dim=1)
+    softmax = nn.Softmax(dim=1)
     if args.cuda: log_softmax = log_softmax.cuda()
     val_iter = data.BucketIterator(test_set, batch_size=args.batch_size, device=-1, repeat=False)
     
-    initial_acc = evaluate(val_iter, model, args).cpu()
-    with open('accuracies/{}_{}.csv'.format(args.method, args.dataset), mode='w') as csvfile:
-        csvwriter = csv.writer(csvfile, delimiter=',', quotechar='"', quoting=csv.QUOTE_MINIMAL)
-        csvwriter.writerow(['Train Size', 'Accuracy'])
-        csvwriter.writerow([len(train_set) , initial_acc.numpy()])
+    initial_acc, initial_loss = evaluate(val_iter, model, args)
+    initial_acc = initial_acc.cpu()
+    
+    if args.hist:
+        with open('histogram/{}_{}.csv'.format(args.method,args.dataset), mode='w') as csvfile:
+            csvwriter = csv.writer(csvfile, delimiter=',', quotechar='"', quoting=csv.QUOTE_MINIMAL) 
+            csvwriter.writerow(['Uncertainty Histograms'])
+    else:        
+        if args.test_inc: 
+            with open('accuracies/{}_{}_{}inc.csv'.format(args.method, args.dataset, args.inc), mode='w') as csvfile:
+                csvwriter = csv.writer(csvfile, delimiter=',', quotechar='"', quoting=csv.QUOTE_MINIMAL)
+                csvwriter.writerow(['Train Size', 'Accuracy', 'Loss'])
+                csvwriter.writerow([len(train_set) , initial_acc.numpy(), initial_loss])
+        elif args.test_preds: 
+            with open('accuracies/{}_{}_{}preds.csv'.format(args.method, args.dataset, args.num_preds), mode='w') as csvfile:
+                csvwriter = csv.writer(csvfile, delimiter=',', quotechar='"', quoting=csv.QUOTE_MINIMAL)
+                csvwriter.writerow(['Train Size', 'Accuracy', 'Loss'])
+                csvwriter.writerow([len(train_set) , initial_acc.numpy(), initial_loss])
+        else:
+            with open('accuracies/{}_{}.csv'.format(args.method, args.dataset), mode='w') as csvfile:
+                csvwriter = csv.writer(csvfile, delimiter=',', quotechar='"', quoting=csv.QUOTE_MINIMAL)
+                csvwriter.writerow(['Train Size', 'Accuracy'])
+                csvwriter.writerow([len(train_set) , initial_acc.numpy()])
+            
+    
     
     al_iter = 0
     acc = initial_acc
@@ -92,33 +106,28 @@ def train_with_al(train_set, val_set, test_set, model, args):
         if args.method == 'random':
             subset,n = methods.random(test_set, subset, args)
             print('\nIter {}, selected {} samples at random\n'.format(al_iter, n))
-            #print('subset after: ', subset)
             
         if args.method == 'entropy':
-            subset, n, total_entropy = methods.entropy(test_set, model, subset, log_softmax, args)                
+            if args.hist: subset, n, total_entropy, hist = methods.entropy(test_set, model, subset, log_softmax, args)
+            else: subset, n, total_entropy = methods.entropy(test_set, model, subset, log_softmax, args)                
             print('\nIter {}, selected {} by entropy uncertainty, total entropy {}\n'.format(al_iter, n, total_entropy))
-            #print('subset after: ', subset)
         
         if args.method == 'dropout':
-            subset, n, total_var = methods.dropout(test_set, model, subset, log_softmax, args)
+            if args.hist: subset, n, total_var, hist = methods.dropout(test_set, model, subset, softmax, args)
+            else: subset, n, total_var = methods.dropout(test_set, model, subset, softmax, args)
             print('\nIter {}, selected {} samples with dropout, total variability {}\n'.format(al_iter, n, total_var))
-            #print('subset after: ', subset)
                     
         if args.method == 'vote':
             subset, n, total_ve = methods.vote(test_set, model, subset, args)
             print('\nIter {}, selected {} by dropout and vote entropy, total vote entropy {}\n'.format(al_iter, n, total_ve))
-            #print('subset after: ', subset)
         
         print('\nSubset: {}'.format(subset))
         print('\nUpdating datasets ...')
         train_set, test_set = methods.update_datasets(train_set, test_set, subset, args)
-
-        #print(train_set, test_set)
         
         print('\nTrain: {}, Validation: {}, Test: {} \n'.format(len(train_set),len(val_set), len(test_set)))
         
         train_iter = data.BucketIterator(train_set, batch_size=args.batch_size, device=-1, repeat=False)
-        #test_iter = data.BucketIterator(test_set, batch_size=args.batch_size, device=-1, repeat=False)
         
         print('\nLoading initial model for dataset {} ...'.format(args.dataset))
         model.load_state_dict(torch.load(args.snapshot))
@@ -129,15 +138,34 @@ def train_with_al(train_set, val_set, test_set, model, args):
         print('\n\nLoading model {}, method {}'.format(al_iter, args.method))
         model.load_state_dict(torch.load('{}/al_{}_{}.pt'.format(args.method, args.dataset, al_iter)))
         
-        acc = evaluate(val_iter, model, args).cpu()
-        with open('accuracies/{}_{}.csv'.format(args.method,args.dataset), mode='a') as csvfile:
-            csvwriter = csv.writer(csvfile, delimiter=',', quotechar='"', quoting=csv.QUOTE_MINIMAL)
-            csvwriter.writerow([len(train_set), acc.numpy()])
+        acc, loss = evaluate(val_iter, model, args)
+        acc = acc.cpu()
+        
+        if args.hist:
+            hist = hist.cpu()
+            with open('histogram/{}_{}.csv'.format(args.method,args.dataset), mode='a') as csvfile:
+                csvwriter = csv.writer(csvfile, delimiter=',', quotechar='"', quoting=csv.QUOTE_MINIMAL) 
+                csvwriter.writerow([hist.numpy()])
+        
+        else:
+            if args.test_inc: 
+                with open('accuracies/{}_{}_{}inc.csv'.format(args.method,args.dataset, args.inc), mode='a') as csvfile:
+                    csvwriter = csv.writer(csvfile, delimiter=',', quotechar='"', quoting=csv.QUOTE_MINIMAL)
+                    csvwriter.writerow([len(train_set), acc.numpy(), loss])
+            elif args.test_preds:
+                with open('accuracies/{}_{}_{}preds.csv'.format(args.method,args.dataset, args.num_preds), mode='a') as csvfile:
+                    csvwriter = csv.writer(csvfile, delimiter=',', quotechar='"', quoting=csv.QUOTE_MINIMAL)
+                    csvwriter.writerow([len(train_set), acc.numpy(), loss])
+            else: 
+                with open('accuracies/{}_{}.csv'.format(args.method,args.dataset), mode='a') as csvfile:
+                    csvwriter = csv.writer(csvfile, delimiter=',', quotechar='"', quoting=csv.QUOTE_MINIMAL)
+                    csvwriter.writerow([len(train_set), acc.numpy()])
+                
+        
 
         al_iter += 1
         
 
-        
 
 def evaluate(data_iter, model, args):
     model.eval()
@@ -163,28 +191,7 @@ def evaluate(data_iter, model, args):
                                                                        accuracy, 
                                                                        corrects, 
                                                                        size))
-    return accuracy
-
-
-def predict(text, model, text_field, label_feild, cuda_flag):
-    assert isinstance(text, str)
-    model.eval()
-    # text = text_field.tokenize(text)
-    text = text_field.preprocess(text)
-    text = [[text_field.vocab.stoi[x] for x in text]]
-    x = text_field.tensor_type(text)
-    #x = autograd.Variable(x, volatile=True)
-    with torch.no_grad():
-        x = autograd.Variable(x)
-    if cuda_flag:
-        x = x.cuda()
-    print(x)
-    output = model(x)
-    print(output)
-    _, predicted = torch.max(output, 1)
-    #return label_feild.vocab.itos[predicted.data[0][0]+1]
-    #return label_feild.vocab.itos[predicted.data[0]+1]
-    return predicted.data[0]
+    return accuracy, avg_loss
 
 
 def save(model, save_dir, save_prefix, steps, round_, args, al=False):
@@ -200,15 +207,4 @@ def save(model, save_dir, save_prefix, steps, round_, args, al=False):
         save_prefix = os.path.join(save_dir, save_prefix)
         save_path = '{}_steps_{}.pt'.format(save_prefix, steps)
         torch.save(model.state_dict(), save_path)
-    
-def save_file(itemlist,filename, args):
-    with open(filename, 'w') as file:
-        for item in itemlist:
-            file.write('{}\n'.format(item))
-    
-    
-    
-    
-    
-    
     
