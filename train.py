@@ -25,8 +25,6 @@ def train(train_iter, dev_iter, model, args):
             optimizer.zero_grad()
             logit = model(feature)
 
-            #print('logit vector', logit.size())
-            #print('target vector', target.size())
             loss = F.cross_entropy(logit, target)
             loss.backward()
             optimizer.step()
@@ -104,10 +102,7 @@ def predict(text, model, text_field, label_feild, cuda_flag):
     print(softmax(output))
     print('output: ',output)
     _, predicted = torch.max(output, 1)
-    #return label_feild.vocab.itos[predicted.data[0][0]+1]
-    #return label_feild.vocab.itos[predicted.data[0]+1]
     return predicted.data
-    #return predicted
 
 def save(model, save_dir, save_prefix, steps):
     if not os.path.isdir(save_dir):
