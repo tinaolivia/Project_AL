@@ -1,7 +1,4 @@
-# Project_AL
+# Introduction
 
-Thursday october 11th 10:55 - the main.py file does not run yet, the model used needs to be modified.
+Active learning using random sampling, entropy uncertainty, vote entropy, and dropout uncertainty. The model used is [Kim's CNN for Sentence Classification](https://arxiv.org/abs/1408.5882) in Pytorch lent from [this repository](https://github.com/Shawn1993/cnn-text-classification-pytorch), which is extended with active learning.
 
-Thursday october 18th 10:39 - main.py runs with the cnn model, but returns a killed message when run with: python3 main.py -batch-size 30000 -save-interval 100000, still 
-
-Tuesday november 6th 0848: changed defaults in main (-no-cuda=True, -save-interval=1000, -epochs=10). runs now.
