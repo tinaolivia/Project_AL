@@ -8,7 +8,6 @@ import torchtext.datasets as datasets
 import model
 import train
 import train_al
-import test
 import csv
 import sys
 
@@ -51,6 +50,9 @@ parser.add_argument('-inc', type=int, default=1, help='number of instances added
 parser.add_argument('-num-preds', type=int, default=5, help='number of predictions made when computing dropout uncertainty [default:5]')
 #parser.add_argument('-test-method', action='store_true', default=False, help='testing active learning method [default: False]')
 parser.add_argument('-criterion', type=float, default=75, help='stopping criterion, accuracy [default:75]')
+parser.add_argument('-test-inc', type=bool, default=False, help='testing number of instances added')
+parser.add_argument('-test-preds', type=bool, default=False, help='testing number of predictions (dropout, vote entropy)')
+parser.add_argument('-hist', type=bool, default=False, help='whether to make a uncertainty histogram')
 args = parser.parse_args()
     
 # load twitter dataset
@@ -123,7 +125,6 @@ for attr, value in sorted(args.__dict__.items()):
 # model
 print('\nDefining model ...')
 cnn = model.CNN_Text(args)
-#train.save(cnn, args.save_dir, 'snapshot', 0)
 if args.snapshot is not None:
     print('\nLoading model from {}...'.format(args.snapshot))
     cnn.load_state_dict(torch.load(args.snapshot,map_location='cpu'))
@@ -132,14 +133,12 @@ if args.cuda:
     torch.cuda.set_device(args.device)
     cnn = cnn.cuda()
     
-# train or predict
+# train, test, or predict
 if args.predict is not None:
     label = train.predict(args.predict, cnn, text_field, label_field, args.cuda)
     print('\n[Text]  {}\n[Label] {}\n'.format(args.predict, label))
 elif args.test:
     train.evaluate(test_iter, cnn, args)
-#elif (args.test_method) and (args.method is not None):
-    #test.test(train_set, val_iter, cnn, args)
 elif args.method is not None:
     train_al.train_with_al(train_set,val_set,test_set,cnn,args)
 else:
