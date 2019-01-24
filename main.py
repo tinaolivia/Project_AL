@@ -10,6 +10,7 @@ import train
 import train_al
 import csv
 import sys
+import data_loaders
 
 csv.field_size_limit(sys.maxsize)
 
@@ -27,7 +28,7 @@ parser.add_argument('-early-stop', type=int, default=1000, help='iteration numbe
 parser.add_argument('-save-best', type=bool, default=True, help='whether to save when get best performance')
 # data 
 parser.add_argument('-shuffle', action='store_true', default=False, help='shuffle the data every epoch')
-parser.add_argument('-dataset', type=str, default='twitter', choices=['twitter', 'news'], help='dataset [default: twitter]')
+parser.add_argument('-dataset', type=str, default='twitter', choices=['twitter', 'news', 'imdb', 'ag'], help='dataset [default: twitter]')
 # model
 parser.add_argument('-dropout', type=float, default=0.5, help='the probability for dropout [default: 0.5]')
 parser.add_argument('-max-norm', type=float, default=3.0, help='l2 constraint of parameters [default: 3.0]')
@@ -55,59 +56,34 @@ parser.add_argument('-test-preds', type=bool, default=False, help='testing numbe
 parser.add_argument('-hist', type=bool, default=False, help='whether to make a uncertainty histogram')
 args = parser.parse_args()
     
-# load twitter dataset
-def twitter_iterator(text_field, label_field, **kargs):
-    datafields = [("text", text_field), ("label", label_field)]
-    trn, val, tst = data.TabularDataset.splits(path='data', train='train.csv', validation='val.csv',test='test.csv',
-                                               format='csv', fields=datafields)
-    text_field.build_vocab(trn)
-    label_field.build_vocab(trn)
-    train_iter = data.BucketIterator(trn, batch_size=args.batch_size,**kargs)
-    val_iter = data.BucketIterator(val, batch_size=args.batch_size,**kargs)
-    test_iter = data.BucketIterator(tst, batch_size=args.batch_size,**kargs)
-    return train_iter, val_iter, test_iter
-
-def twitter_dataset(text_field,label_field,**kargs):
-    datafields = [("text",text_field),("label",label_field)]
-    trn, val, tst = data.TabularDataset.splits(path='data',train='train.csv', validation='val.csv', test='test.csv',
-                                               format='csv', fields=datafields)
-    text_field.build_vocab(trn)
-    label_field.build_vocab(trn)
-    
-    #return list(trn), list(val), list(tst) 
-    return trn, val, tst 
-
-def news(text_field, label_field, **kargs):
-    datafields = [("text", text_field),("label", label_field)]
-    trn, val, tst = data.TabularDataset.splits(path='data', train='news_train.csv', validation='news_val.csv',
-                                               test='news_test.csv', format='csv', fields=datafields)
-    
-    text_field.build_vocab(trn)
-    label_field.build_vocab(trn)
-    
-    train_iter = data.BucketIterator(trn, args.batch_size, **kargs)
-    val_iter = data.BucketIterator(val, args.batch_size, **kargs)
-    test_iter = data.BucketIterator(tst, args.batch_size, **kargs)
-    
-    return trn, train_iter, val, val_iter, tst, test_iter
-
+# defining text and label fields
+text_field = data.Field(lower=True)
+label_field = data.Field(sequential=False)
 
 # load data
 if args.dataset == 'twitter':
-    print("\nLoading Twitter data...")
-    text_field = data.Field(lower=True)
-    label_field = data.Field(sequential=False)
-    print('\nDatasets ... ')
-    train_set, val_set, test_set = twitter_dataset(text_field, label_field, device=-1, repeat=False)
-    print('\nData iterators ... \n')
-    train_iter, val_iter, test_iter = twitter_iterator(text_field, label_field, device=-1, repeat=False)
+    print('\nLoading Twitter data ...')
+    train_set, train_iter, val_set, val_iter, test_set, test_iter = data_loaders.twitter(text_field, label_field, args, 
+                                                                                         device=torch.device('cpu'), repeat=False)
     
 elif args.dataset == 'news':
-    print('\nLoading Newsgroup 20 data ... ')
-    text_field = data.Field(lower=True)
-    label_field = data.Field(sequential=False)
-    print('\nDatasets and iterators ... ' )
-    train_set, train_iter, val_set, val_iter, test_set, test_iter = news(text_field, label_field, device=-1, repeat=False)
+    print('\nLoading 20 Newsgroup data ...')
+    train_set, train_iter, val_set, val_iter, test_set, test_iter = data_loaders.news(text_field, label_field, args, 
+                                                                                      device=torch.device('cpu'), repeat=False)
+    
+elif args.dataset == 'imdb':
+    print('\nLoading IMDB movie review data ...')
+    train_set, train_iter, val_set, val_iter, test_set, test_iter = data_loaders.imdb(text_field, label_field, args, 
+                                                                                      device=torch.device('cpu'), repeat=False)
+    
+elif args.dataset == 'ag':
+    print('\nloading AG News data ...')
+    train_set, train_iter, val_set, val_iter, test_set, test_iter = data_loaders.ag(text_field, label_field, args, 
+                                                                                    device=torch.device('cpu'), repeat=False)
+    
+else: 
+    print('\nDataset is not defined.')
+    sys.exit()
 
 
 # update args and print
@@ -115,7 +91,8 @@ args.embed_num = len(text_field.vocab)
 args.class_num = len(label_field.vocab) - 1
 args.cuda = (not args.no_cuda) and torch.cuda.is_available(); del args.no_cuda
 args.kernel_sizes = [int(k) for k in args.kernel_sizes.split(',')]
-args.save_dir = os.path.join(args.save_dir, datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S'))
+if args.method is not None: args.save_dir = datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
+else: args.save_dir = os.path.join(args.save_dir, datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S'))
 
 print("\nParameters:")
 for attr, value in sorted(args.__dict__.items()):

@@ -1,4 +1,5 @@
 import os
+import datetime
 import sys
 import torch
 import torch.autograd as autograd
@@ -57,7 +58,7 @@ def train(train_iter, dev_iter, model, round_, args):
                         print('early stop by {} steps.'.format(args.early_stop))
 
              
-    save(model, save_dir=args.method, save_prefix='al', steps=steps, round_=round_, args=args, al=True)
+    save(model, save_dir=os.path.join(args.method,args.save_dir), save_prefix='al', steps=steps, round_=round_, args=args, al=True)
                 
 
 def train_with_al(train_set, val_set, test_set, model, args):
@@ -136,7 +137,7 @@ def train_with_al(train_set, val_set, test_set, model, args):
         train(train_iter, val_iter, model, al_iter, args)
         
         print('\n\nLoading model {}, method {}'.format(al_iter, args.method))
-        model.load_state_dict(torch.load('{}/al_{}_{}.pt'.format(args.method, args.dataset, al_iter)))
+        model.load_state_dict(torch.load('{}/{}/al_{}_{}.pt'.format(args.method, args.save_dir, args.dataset, al_iter)))
         
         acc, loss = evaluate(val_iter, model, args)
         acc = acc.cpu()
